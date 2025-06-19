@@ -49,17 +49,32 @@ pico_enable_stdio_usb(button_status_server 1)
 
 # Add the standard library to the build
 target_link_libraries(button_status_server
-        pico_stdlib FreeRTOS-Kernel FreeRTOS-Kernel-Heap4)
+        pico_stdlib 
+        FreeRTOS-Kernel 
+        FreeRTOS-Kernel-Heap4 
+        hardware_gpio 
+        hardware_adc 
+        hardware_pwm
+)
 
 # Add the standard include files to the build
 target_include_directories(button_status_server PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${PICO_SDK_PATH}/lib/lwip/src/include
+        ${PICO_SDK_PATH}/lib/lwip/src/include/arch
+        ${PICO_SDK_PATH}/lib/lwip/src/include/lwip
 )
 
 # Add any user requested libraries
 target_link_libraries(button_status_server 
         pico_cyw43_arch_none
-        )
+        pico_cyw43_arch_lwip_threadsafe_background
+)
+
+target_sources(button_status_server PRIVATE
+    ${PICO_SDK_PATH}/lib/lwip/src/apps/http/httpd.c
+    ${PICO_SDK_PATH}/lib/lwip/src/apps/http/fs.c
+)
 
 pico_add_extra_outputs(button_status_server)
 

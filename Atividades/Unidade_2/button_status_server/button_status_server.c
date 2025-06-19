@@ -1,8 +1,15 @@
 #include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "hardware/adc.h"
+#include "hardware/pwm.h"
+#include "lwip/pbuf.h"
+#include "lwip/tcp.h"
+#include "lwip/netif.h" // Para acessar netif_default e IP
 
 #define LED_GREEN_PIN 11 // GPIO11 - LED verde
 #define BUTTON_A 5 // Definindo botão A
@@ -18,19 +25,17 @@ void vButtonReadTask(void *pvParamters) {
         if (btn_pressed) {
             gpio_put(LED_GREEN_PIN, true);
             buttonA_state = true;
-            // printf("Botão pressionado\n");
 
             // Aguarda até o botão ser solto
             while (!gpio_get(BUTTON_A)) {
-                vTaskDelay(pdMS_TO_TICKS(20));
+                vTaskDelay(pdMS_TO_TICKS(10));
             }
 
             gpio_put(LED_GREEN_PIN, false);
             buttonA_state = false;
-            // printf("Botão solto\n");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(20)); // Evita leitura constante
+        vTaskDelay(pdMS_TO_TICKS(10)); // Evita leitura constante
     }
 }
 
