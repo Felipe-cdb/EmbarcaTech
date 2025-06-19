@@ -28,6 +28,9 @@ set(PICO_BOARD pico_w CACHE STRING "Board type")
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 
+# Pull in FreeRTOS
+include(C:/Users/Softex/Documents/atividadesEmbacatech/bibliotecas/FreeRTOS-LTS/FreeRTOS/FreeRTOS-Kernel/portable/ThirdParty/GCC/RP2040/FreeRTOS_Kernel_import.cmake)
+
 project(button_status_server C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
@@ -46,7 +49,7 @@ pico_enable_stdio_usb(button_status_server 1)
 
 # Add the standard library to the build
 target_link_libraries(button_status_server
-        pico_stdlib)
+        pico_stdlib FreeRTOS-Kernel FreeRTOS-Kernel-Heap4)
 
 # Add the standard include files to the build
 target_include_directories(button_status_server PRIVATE

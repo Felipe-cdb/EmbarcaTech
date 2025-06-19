@@ -1,18 +1,55 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/cyw43_arch.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 #define LED_GREEN_PIN 11 // GPIO11 - LED verde
 #define BUTTON_A 5 // Definindo botão A
 
-// Variável global para controlar o estado do LED Verde
-bool led_state = false;
 // Variável global para controlar o estado do botão A
 bool buttonA_state = false;
 
-int main()
-{
-    stdio_init_all();
+// Leitura do botão
+void vButtonReadTask(void *pvParamters) {
+    for (;;) {
+        bool btn_pressed = !gpio_get(BUTTON_A); // Ativo em nível baixo (pull-up)
+        
+        if (btn_pressed) {
+            gpio_put(LED_GREEN_PIN, true);
+            buttonA_state = true;
+            // printf("Botão pressionado\n");
+
+            // Aguarda até o botão ser solto
+            while (!gpio_get(BUTTON_A)) {
+                vTaskDelay(pdMS_TO_TICKS(20));
+            }
+
+            gpio_put(LED_GREEN_PIN, false);
+            buttonA_state = false;
+            // printf("Botão solto\n");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20)); // Evita leitura constante
+    }
+}
+
+// Simulação do envio ao servidor
+void vServerTask(void *pvParamters) {
+    for (;;) {
+        printf("Enviando dados para o servidor ...\n");
+
+        if (buttonA_state) {
+            printf(" [STATUS: Botão pressionado]\n");
+        } else {
+            printf(" [STATUS: Botão solto]\n");
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Aguarda 1 segundo
+    }
+}
+
+void setup() {
 
     // Configura o LED
     gpio_init(LED_GREEN_PIN);
@@ -23,39 +60,30 @@ int main()
     gpio_init(BUTTON_A);
     gpio_set_dir(BUTTON_A, GPIO_IN);
     gpio_pull_up(BUTTON_A);  // Habilita o resistor pull-up interno
+    
+    stdio_init_all();
 
+    printf("Programa Iniciado!\n");
+}
 
-    // Initialise the Wi-Fi chip
-    if (cyw43_arch_init()) {
-        printf("Wi-Fi init failed\n");
-        return -1;
+int main()
+{
+    setup();
+
+    xTaskCreate(vButtonReadTask, "Leitura de Botão", 128, NULL, 2, NULL);
+    xTaskCreate(vServerTask, "Envia dados ao servidor", 128, NULL, 1, NULL);
+    
+    vTaskStartScheduler();
+    
+    for (;;){
+        // Initialise the Wi-Fi chip
+        if (cyw43_arch_init()) {
+            printf("Wi-Fi init failed\n");
+            return -1;
+        }
+
+        // Liga led interno, usado para mostrar que o programa foi iniciado
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
     }
-
-    // Liga led interno, usado para mostrar que o programa foi iniciado
-    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-
-    while (true) {
-        printf("Programa Iniciado!\n");
-        // sleep_ms(1000); // 1000ms = 1 segundo
-
-        // Verifica o estado do botão (ativo em nível lógico 0 - lógica invertida devido ao pullup)
-        if (!gpio_get(BUTTON_A)){  // gpio_get(BUTTON_A) retorna 0 quando pressionado
-            sleep_ms(10); // Delay para debounce
-            // Confirma se ainda está pressionado após o debounce
-            if (!gpio_get(BUTTON_A)) {
-                printf("Botão pressionado\n");
-                // Aguarda até soltar o botão
-                while (!gpio_get(BUTTON_A)) {
-                    sleep_ms(1);
-                }
-
-                // Alterna estado
-                buttonA_state = !buttonA_state;
-                led_state = !led_state;
-                gpio_put(LED_GREEN_PIN, led_state);
-            }
-        } 
-        printf("Estado atual do botão: %s\n", buttonA_state ? "ligado" : "desligado");
-        sleep_ms(10); // Pequeno delay para não sobrecarregar o loop
-    }
+    return 0; // Retorne 0
 }
