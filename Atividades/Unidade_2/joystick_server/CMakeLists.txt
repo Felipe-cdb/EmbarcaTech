@@ -49,6 +49,7 @@ target_link_libraries(joystick_server
         pico_stdlib
         hardware_gpio 
         hardware_adc
+        hardware_pwm
 )
 
 # Add the standard include files to the build
@@ -65,10 +66,9 @@ target_link_libraries(joystick_server
         pico_cyw43_arch_lwip_threadsafe_background
 )
 
-target_sources(button_status_server PRIVATE
+target_sources(joystick_server PRIVATE
     ${PICO_SDK_PATH}/lib/lwip/src/apps/http/httpd.c
     ${PICO_SDK_PATH}/lib/lwip/src/apps/http/fs.c
 )
 
 pico_add_extra_outputs(joystick_server)
-
