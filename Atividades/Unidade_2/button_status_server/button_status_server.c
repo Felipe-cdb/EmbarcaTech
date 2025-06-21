@@ -11,8 +11,8 @@
 #include "lwip/netif.h"
 
 // Configurações de Wi-Fi
-#define WIFI_SSID "WAVE-NEGUINHA_2G"
-#define WIFI_PASSWORD "efg346708"
+#define WIFI_SSID "SSID"
+#define WIFI_PASSWORD "password"
 
 // Pinos
 #define LED_PIN CYW43_WL_GPIO_LED_PIN
