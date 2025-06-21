@@ -53,8 +53,7 @@ target_link_libraries(button_status_server
         FreeRTOS-Kernel 
         FreeRTOS-Kernel-Heap4 
         hardware_gpio 
-        hardware_adc 
-        hardware_pwm
+        hardware_adc
 )
 
 # Add the standard include files to the build
