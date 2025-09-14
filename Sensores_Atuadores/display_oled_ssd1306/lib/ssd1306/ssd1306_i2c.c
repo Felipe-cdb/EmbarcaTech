@@ -132,37 +132,29 @@ void ssd1306_draw_line(uint8_t *ssd, int x_0, int y_0, int x_1, int y_1, bool se
     }
 }
 
-// Adquire os pixels para um caractere (de acordo com ssd1306_font.h)
-inline int ssd1306_get_font(uint8_t character)
-{
-  if (character >= 'A' && character <= 'Z') {
-    return character - 'A' + 1;
-  }
-  else if (character >= '0' && character <= '9') {
-    return character - '0' + 27;
-  }
-  else
-    return 0;
-}
-
-// Desenha um único caractere no display
+// Desenha um único caractere no display usando font.h
 void ssd1306_draw_char(uint8_t *ssd, int16_t x, int16_t y, uint8_t character) {
     if (x > ssd1306_width - 8 || y > ssd1306_height - 8) {
         return;
     }
 
-    y = y / 8;
+    // Cada linha de 8 pixels no SSD1306 é 1 byte no framebuffer
+    int fb_idx = (y / 8) * ssd1306_width + x;
 
-    character = toupper(character);
-    int idx = ssd1306_get_font(character);
-    int fb_idx = y * 128 + x;
+    // Limita o caractere para a faixa ASCII suportada (32–126)
+    if (character < 32 || character > 126) {
+        character = 32; // espaço como padrão
+    }
+
+    // Calcula o índice do caractere no array font
+    int font_idx = (character - 32) * 8;
 
     for (int i = 0; i < 8; i++) {
-        ssd[fb_idx++] = font[idx * 8 + i];
+        ssd[fb_idx + i] = font[font_idx + i];
     }
 }
 
-// Desenha uma string, chamando a função de desenhar caractere várias vezes
+// Desenha uma string chamando ssd1306_draw_char() várias vezes
 void ssd1306_draw_string(uint8_t *ssd, int16_t x, int16_t y, char *string) {
     if (x > ssd1306_width - 8 || y > ssd1306_height - 8) {
         return;

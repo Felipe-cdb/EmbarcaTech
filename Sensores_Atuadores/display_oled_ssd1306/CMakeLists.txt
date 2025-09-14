@@ -51,12 +51,18 @@ target_link_libraries(display_oled_ssd1306
 # Add the standard include files to the build
 target_include_directories(display_oled_ssd1306 PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/lib/ssd1306
+)
+
+# Adicionar os arquivos da biblioteca ao projeto
+target_sources(display_oled_ssd1306 PRIVATE
+        lib/ssd1306/ssd1306_i2c.c
 )
 
 # Add any user requested libraries
 target_link_libraries(display_oled_ssd1306 
-        
-        )
+        hardware_i2c
+)
 
 pico_add_extra_outputs(display_oled_ssd1306)
 

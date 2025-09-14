@@ -1,2 +1,29 @@
-build
-!.vscode/*
+# Ignorar a pasta de build
+build/
+
+# Ignorar configurações específicas do VS Code, exceto arquivos importantes
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Ignorar arquivos temporários do sistema operacional
+*.DS_Store
+Thumbs.db
+
+# Ignorar arquivos de log
+*.log
+
+# Ignorar arquivos de cache
+*.cache
+*.tmp
+
+# Ignorar arquivos de compilação
+*.o
+*.obj
+*.exe
+*.out
+*.elf
+*.bin
+*.hex
