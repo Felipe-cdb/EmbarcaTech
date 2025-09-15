@@ -1,3 +1,6 @@
+Baseada na biblioteca utilizada em
+https://github.com/BitDogLab/BitDogLab-C/tree/main/ssd1306
+
 📂 Estrutura da biblioteca
 
 # 1 - ssd1306.h 
