@@ -1,6 +1,6 @@
 #include "pico/stdlib.h"    // sleep_ms, stdio_init_all, GPIO
 #include "hardware/i2c.h"   // i2c_init e controle do I2C
-#include "ssd1306.h"        // funções da biblioteca SSD1306
+#include "ssd1306/ssd1306.h"        // funções da biblioteca SSD1306
 #include <string.h>         // memset
 #include <ctype.h>          // toupper
 #include "logo_embarcatech.h" // bitmap de exemplo

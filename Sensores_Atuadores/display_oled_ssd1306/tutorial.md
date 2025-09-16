@@ -38,7 +38,7 @@ Precisei do seguites configurações em meu cmakerlist:
     # Add the standard include files to the build
     target_include_directories(display_oled_ssd1306 PRIVATE
             ${CMAKE_CURRENT_LIST_DIR}
-            ${CMAKE_CURRENT_LIST_DIR}/lib/ssd1306
+            ${CMAKE_CURRENT_LIST_DIR}/lib
     )
 
     # Adicionar os arquivos da biblioteca ao projeto
