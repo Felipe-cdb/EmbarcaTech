@@ -55,7 +55,7 @@ target_include_directories(servo_motor_9G_SG90 PRIVATE
 
 # Add any user requested libraries
 target_link_libraries(servo_motor_9G_SG90 
-        
+        hardware_pwm
         )
 
 pico_add_extra_outputs(servo_motor_9G_SG90)
