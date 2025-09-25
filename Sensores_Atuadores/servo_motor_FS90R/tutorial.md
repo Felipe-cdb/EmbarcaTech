@@ -1,8 +1,24 @@
+biblioteca criada por Felipe Correia 23/09/2025
+
 # Servo contínuo (ex.: FS90R)
 Não tem posição fixa, só gira continuamente.
 O pulso PWM determina a velocidade e a direção, não a posição.
 
 # Funções disponiveis na biblioteca
+Controle básico
+
+servo_init() → inicializa com pulso neutro (stop).
+servo_clockwise() → gira horário ajustando velocidade.
+servo_counterClockwise() → gira anti-horário ajustando velocidade.
+servo_stop() → envia pulso neutro para parar.
+
+Calibração
+servo_calibrate_manual() → usuário mede manualmente quanto tempo demora 360°.
+
+Movimento por graus
+servo_turn_degrees() → gira X graus baseado no tempo calibrado.
+
+# Detalhes do controle básico
 * 1500 µs → parado
 // utilize essa função para manter servo parado
 servo_stop(pin_servo); 
