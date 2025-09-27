@@ -3,8 +3,7 @@
 Adaptada por Felipe Correia das seguintes bibliotecas
 Biblioteca bh1750 por dernasherbrezon
 [https://github.com/dernasherbrezon/bh1750](https://github.com/dernasherbrezon/bh1750)
-Biblioteca i2c por Raspberry Pi
-TESTE\_bh1750\_BITDOGLAB por Antonio Sergio Castro de Carvalho Junior
+Biblioteca TESTE_bh1750_BITDOGLAB por por Antonio Sergio Castro de Carvalho Junior
 [https://github.com/ASCCJR/TESTE\_bh1750\_BITDOGLAB/tree/main](https://github.com/ASCCJR/TESTE_bh1750_BITDOGLAB/tree/main)
 
 **Observação:** Basta colocar a pasta `bh1750` dentro do seu projeto e configurar o cmake de acordo com sua estrutura.

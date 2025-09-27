@@ -17,6 +17,12 @@ int main() {
     BH1750 sensor;
     bh1750_init_default(&sensor, i2c0);  // Endereço padrão 0x23, modo contínuo H-RES
 
+    // Trabalhando com um segundo sensor 
+    //(deve passar o endereço alternativo ou padrão dependendo do endereço do sensor anterior)
+    //BH1750 sensor2;
+    //bh1750_init(&sensor2, i2c0, BH1750_ADDRESS_ALT, BH1750_ONE_TIME_H_RES_MODE);
+
+
     // Ajusta o tempo de medição (sensibilidade)
     bh1750_set_measurement_time(&sensor, 100); // aumenta sensibilidade
 

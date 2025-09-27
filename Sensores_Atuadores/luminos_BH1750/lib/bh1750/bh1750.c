@@ -1,8 +1,7 @@
 // Adaptada por Felipe Correia das seguintes bibliotecas 
 // Biblioteca bh1750 por dernasherbrezon
 // https://github.com/dernasherbrezon/bh1750
-// Biblioteca i2c por Raspberry Pi
-// TESTE_bh1750_BITDOGLAB por Antonio Sergio Castro de Carvalho Junior
+// Biblioteca Biblioteca TESTE_bh1750_BITDOGLAB por por Antonio Sergio Castro de Carvalho Junior
 // https://github.com/ASCCJR/TESTE_bh1750_BITDOGLAB/tree/main
 
 
