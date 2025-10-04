@@ -1,3 +1,7 @@
+// Adaptada por Felipe Correia das seguintes bibliotecas 
+// Baseada na biblioteca oficial da BitDogLab  
+// https://github.com/BitDogLab/BitDogLab-C/tree/main/ssd1306
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

@@ -1,3 +1,7 @@
+// Adaptada por Felipe Correia das seguintes bibliotecas 
+// Baseada na biblioteca oficial da BitDogLab  
+// https://github.com/BitDogLab/BitDogLab-C/tree/main/ssd1306
+
 #include <stdint.h>
 
 // Fonte 8x8 pixels, ASCII 32–126

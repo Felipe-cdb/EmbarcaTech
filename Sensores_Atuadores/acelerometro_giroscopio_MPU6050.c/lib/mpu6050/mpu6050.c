@@ -1,3 +1,7 @@
+// Adaptada por Felipe Correia das seguintes bibliotecas 
+// Baseada na biblioteca oficial da BitDogLab  
+// https://github.com/BitDogLab/BitDogLab-C/tree/main/Basic_peripherals/sensor_acelerometro_giroscopio/mpu6050  
+
 #include "mpu6050.h"
 
 // -----------------------------

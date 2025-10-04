@@ -1,3 +1,7 @@
+// Adaptada por Felipe Correia das seguintes bibliotecas 
+// Baseada na biblioteca oficial da BitDogLab  
+// https://github.com/BitDogLab/BitDogLab-C/tree/main/ssd1306
+
 #include <stdlib.h>
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"

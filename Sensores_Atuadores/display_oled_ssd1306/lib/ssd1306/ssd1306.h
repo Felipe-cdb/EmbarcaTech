@@ -1,3 +1,8 @@
+// Adaptada por Felipe Correia das seguintes bibliotecas 
+// Baseada na biblioteca oficial da BitDogLab  
+// https://github.com/BitDogLab/BitDogLab-C/tree/main/ssd1306
+
+
 #include "ssd1306_i2c.h"
 extern void calculate_render_area_buffer_length(struct render_area *area);
 extern void ssd1306_send_command(uint8_t cmd);
