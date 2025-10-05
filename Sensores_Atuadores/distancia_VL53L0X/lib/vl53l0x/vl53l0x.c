@@ -30,7 +30,6 @@ static uint16_t read_reg16(VL53L0X* sensor, uint8_t reg) {
     return ((uint16_t)buf[0] << 8) | buf[1];
 }
 
-
 // --- Funções Públicas ---
 static void vl53l0x_setup_i2c(i2c_inst_t *i2c, uint8_t sda, uint8_t scl){
     // Inicializa o I2C. 100kHz é uma velocidade segura para depuração.
@@ -102,6 +101,7 @@ bool vl53l0x_init_custom(VL53L0X* sensor, i2c_inst_t* i2c_port, uint8_t sda, uin
     write_reg16(sensor, 0x04, 33000 / 1085); // Valor de aproximação para o período.
 
     write_reg(sensor, SYSTEM_INTERRUPT_CLEAR, 0x01);
+    
     return true;
 }
 
