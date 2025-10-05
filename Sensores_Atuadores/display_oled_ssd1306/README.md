@@ -31,6 +31,9 @@ Contém definições de registradores e comandos do SSD1306 (endereços de memó
 
 # CMakeList
 Precisei do seguites configurações em meu cmakerlist: 
+    # Modify the below lines to enable/disable output over UART/USB
+        pico_enable_stdio_uart(distancia_VL53L0X 0)
+        pico_enable_stdio_usb(distancia_VL53L0X 1)
     # Add the standard library to the build
     target_link_libraries(display_oled_ssd1306
             pico_stdlib)
@@ -114,3 +117,7 @@ ssd1306_config(&ssd_bm);
 
 // Exibir logo
 ssd1306_draw_bitmap(&ssd_bm, logo_embarcatech);
+
+## Observações
+- Cuidado ao configurar o CMakeLists: O nome do alvo do projeto deve corresponder corretamente. Por exemplo, o nome do alvo pode ser distancia_VL53L0X ou main, dependendo de como você configurar seu projeto.
+- Nesse projeto estive utilizando o sdk 1.5.1

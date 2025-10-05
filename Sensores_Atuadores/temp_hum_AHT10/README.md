@@ -133,3 +133,7 @@ target_sources(temp_hum_AHT10 PRIVATE
 ```
 
 > Isso inclui a biblioteca e o suporte ao I2C no projeto.
+
+## Observações
+- Cuidado ao configurar o CMakeLists: O nome do alvo do projeto deve corresponder corretamente. Por exemplo, o nome do alvo pode ser distancia_VL53L0X ou main, dependendo de como você configurar seu projeto.
+- Nesse projeto estive utilizando o sdk 1.5.1

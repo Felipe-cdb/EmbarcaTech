@@ -151,6 +151,10 @@ int main() {
 # CMakeLists.txt
 
 ```cmake
+# Modify the below lines to enable/disable output over UART/USB
+pico_enable_stdio_uart(distancia_VL53L0X 0)
+pico_enable_stdio_usb(distancia_VL53L0X 1)
+
 # Add the standard library to the build
 target_link_libraries(luminos_BH1750
         pico_stdlib)
@@ -172,3 +176,6 @@ target_link_libraries(luminos_BH1750
         )
 
 ```
+## Observações
+- Cuidado ao configurar o CMakeLists: O nome do alvo do projeto deve corresponder corretamente. Por exemplo, o nome do alvo pode ser distancia_VL53L0X ou main, dependendo de como você configurar seu projeto.
+- Nesse projeto estive utilizando o sdk 1.5.1

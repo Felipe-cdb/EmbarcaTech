@@ -85,3 +85,34 @@ O FS90R é um servo de rotação contínua, e se girar sempre na velocidade máx
 
 * Permitir pausas ou mudanças de direção para não ficar rodando sempre no mesmo sentido.
 
+# CMakeLists.txt
+
+```cmake
+ Modify the below lines to enable/disable output over UART/USB
+pico_enable_stdio_uart(servo_motor_FS90R 0)
+pico_enable_stdio_usb(servo_motor_FS90R 1)
+
+# Add the standard library to the build
+target_link_libraries(servo_motor_FS90R
+        pico_stdlib)
+
+# Add the standard include files to the build
+target_include_directories(servo_motor_FS90R PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/lib
+)
+
+# Adicionar os arquivos da biblioteca ao projeto
+target_sources(servo_motor_FS90R PRIVATE
+        lib/fs90r/fs90r.c
+)
+
+# Add any user requested libraries
+target_link_libraries(servo_motor_FS90R 
+        hardware_pwm        
+)
+```
+
+## Observações
+- Cuidado ao configurar o CMakeLists: O nome do alvo do projeto deve corresponder corretamente. Por exemplo, o nome do alvo pode ser distancia_VL53L0X ou main, dependendo de como você configurar seu projeto.
+- Nesse projeto estive utilizando o sdk 1.5.1

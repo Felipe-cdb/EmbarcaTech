@@ -236,6 +236,10 @@ add_executable(seu_projeto
 target_link_libraries(seu_projeto pico_stdlib hardware_spi)
 ```
 
+## Observações
+- Cuidado ao configurar o CMakeLists: O nome do alvo do projeto deve corresponder corretamente. Por exemplo, o nome do alvo pode ser distancia_VL53L0X ou main, dependendo de como você configurar seu projeto.
+- Nesse projeto estive utilizando o sdk 1.5.1
+
 ### Utilizar o Módulo no `main.c`
 
 Agora, no seu `main.c`, inclua o cabeçalho do módulo e utilize as suas funções, como demonstrado no [projeto de exemplo](https://github.com/LabirasIFPI/SDCard_PicoW-EmbarcaTech/blob/831d0cc8abd954cd3e133a29194af6e9af786c14/main.c).
@@ -247,3 +251,6 @@ Agora, no seu `main.c`, inclua o cabeçalho do módulo e utilize as suas funçõ
 - <http://www.technoblogy.com/show?3XEP>
 
 > Documentação por [@Nicolas Rafael](https://github.com/NicolasRaf)
+
+
+
