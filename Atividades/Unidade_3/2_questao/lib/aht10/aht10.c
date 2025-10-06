@@ -28,31 +28,11 @@ static bool aht10_read_bytes(AHT10 *sensor, uint8_t *buf, size_t len) {
 // -----------------------------
 // Inicialização
 // -----------------------------
-
-static void aht10_setup_i2c(i2c_inst_t* i2c, uint8_t sda, uint8_t scl){
-    // Inicializa o I2C. 100kHz é uma velocidade segura para depuração.
-    i2c_init(i2c, 100 * 1000);
-    gpio_set_function(sda, GPIO_FUNC_I2C);
-    gpio_set_function(scl, GPIO_FUNC_I2C);
-    gpio_pull_up(sda);
-    gpio_pull_up(scl);
-}
-
-bool aht10_init(AHT10* sensor, i2c_inst_t* i2c, uint8_t sda, uint8_t scl) {
-    return aht10_init_custom(sensor, i2c, sda, scl, AHT10_ADDRESS_DEFAULT);
-    return true;
-}
-
-bool aht10_init_custom(AHT10* sensor, i2c_inst_t* i2c, uint8_t sda, uint8_t scl, uint8_t addr) {
+bool aht10_init(AHT10 *sensor, i2c_inst_t *i2c, uint8_t addr) {
     sensor->i2c = i2c;
-    sensor->sda = sda;
-    sensor->scl = scl;
     sensor->addr = addr;
     sensor->temperature = 0.0f;
     sensor->humidity = 0.0f;
-
-    // Configura pinos e inicializa I2C
-    aht10_setup_i2c(sensor->i2c, sensor->sda, sensor->scl);
 
     // Reset do sensor
     if (!aht10_write_cmd(sensor, &CMD_RESET, 1, false)) {

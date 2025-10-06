@@ -1,21 +1,16 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/i2c.h"
 #include "aht10/aht10.h"
+
+#define SDA_PIN 0
+#define SCL_PIN 1
 
 int main() {
     stdio_init_all();
 
-    // Inicializa I2C0
-    i2c_init(i2c0, 100 * 1000); // 100 kHz
-    gpio_set_function(0, GPIO_FUNC_I2C); // SDA
-    gpio_set_function(1, GPIO_FUNC_I2C); // SCL
-    gpio_pull_up(0);
-    gpio_pull_up(1);
-
     // Inicializa sensor AHT10
     AHT10 sensor;
-    if (!aht10_init_default(&sensor, i2c0)) {
+    if (!aht10_init(&sensor, i2c0, SDA_PIN, SCL_PIN)) {
         printf("Erro ao inicializar AHT10!\n");
         return -1;
     }
@@ -24,12 +19,13 @@ int main() {
     // Criação dos sensores
     // AHT10 sensor2;
     // //Inicialização do sensor2 com endereço alternativo
-    // if (!aht10_init(&sensor2, i2c0, AHT10_ADDRESS_ALTERNATE)) {
+    // if (!aht10_init_custom(&sensor2, i2c0, SDA_PIN, SCL_PIN, AHT10_ADDRESS_ALTERNATE)) {
     //     printf("Erro ao inicializar sensor2 no endereco 0x%02X\n", AHT10_ADDRESS_ALTERNATE);
     // } else {
     //     printf("Sensor2 inicializado com sucesso no endereco 0x%02X\n", AHT10_ADDRESS_ALTERNATE);
     // }
 
+    sleep_ms(1000); // aguarda 1s para estabilização do sensor
     printf("Sensor AHT10 inicializado com sucesso!\n");
 
     while (1) {

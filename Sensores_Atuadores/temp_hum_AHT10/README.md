@@ -15,7 +15,7 @@
 
 A biblioteca fornece funções simples para:
 
-* Inicializar o sensor AHT10 (`aht10_init` / `aht10_init_default`)
+* Inicializar o sensor AHT10 (`aht10_init` / `aht10_init_custom`)
 * Ler temperatura e umidade (`aht10_get_temperature`, `aht10_get_humidity`)
 * Calcular o ponto de orvalho (`aht10_get_dew_point`)
 * Suporte a múltiplos sensores no mesmo barramento I2C
@@ -37,14 +37,14 @@ A biblioteca fornece funções simples para:
 
 ```c
 AHT10 sensor;
-aht10_init_default(&sensor, i2c0); // endereço padrão 0x38
+aht10_init(&sensor, i2c0, sda_pin, scl_pin); // endereço padrão AHT10_ADDRESS_DEFAULT = 0x38
 ```
 
 ### Com endereço alternativo
 
 ```c
 AHT10 sensor2;
-aht10_init(&sensor2, i2c0, AHT10_ADDRESS_ALT); // endereço alternativo 0x39
+aht10_init_custom(&sensor, i2c0, sda_pin, scl_pin, AHT10_ADDRESS_ALT); // endereço alternativo 0x39
 ```
 
 > Útil para conectar dois sensores no mesmo barramento I2C.
@@ -86,15 +86,9 @@ printf("Dew Point: %.2f °C\n", dew);
 int main() {
     stdio_init_all();
 
-    i2c_init(i2c0, 100 * 1000);
-    gpio_set_function(4, GPIO_FUNC_I2C);
-    gpio_set_function(5, GPIO_FUNC_I2C);
-    gpio_pull_up(4);
-    gpio_pull_up(5);
-
     AHT10 sensor1, sensor2;
-    aht10_init_default(&sensor1, i2c0);           // 0x38
-    aht10_init(&sensor2, i2c0, AHT10_ADDRESS_ALT); // 0x39
+    aht10_init(&sensor1, i2c0, 0, 1);           // 0x38
+    aht10_init_custom(&sensor2, i2c0, 0, 1, AHT10_ADDRESS_ALT); // 0x39
 
     while (1) {
         printf("Sensor1 -> Temp: %.2f C, Hum: %.2f %%\n",
