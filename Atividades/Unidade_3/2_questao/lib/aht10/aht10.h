@@ -35,62 +35,33 @@ static const uint8_t CMD_RESET     = 0xBA;               ///< Soft reset
 // -----------------------------
 typedef struct {
     i2c_inst_t *i2c;   ///< Instância I2C usada (ex: i2c0 ou i2c1)
+    uint8_t sda, scl;  ///< Pinos SDA e SCL do I2C
     uint8_t addr;      ///< Endereço I2C do sensor
     float temperature; ///< Última leitura de temperatura (°C)
     float humidity;    ///< Última leitura de umidade (%RH)
 } AHT10;
 
 // -----------------------------
-// Funções principais
+// Funções de inicialização
 // -----------------------------
 
-/**
- * @brief Inicializa o sensor AHT10.
- * 
- * @param sensor Ponteiro para struct AHT10.
- * @param i2c    Instância do I2C (ex: i2c0).
- * @param addr   Endereço I2C (0x38 ou 0x39).
- * @return true se inicializou corretamente, false se erro.
- */
-bool aht10_init(AHT10 *sensor, i2c_inst_t *i2c, uint8_t addr);
+//Inicialização simplificada (endereço padrão). true se inicializou corretamente, false se erro.
+bool aht10_init(AHT10* sensor, i2c_inst_t* i2c, uint8_t sda, uint8_t scl);
+// Inicialização customizada (endereço customizado)
+bool aht10_init_custom(AHT10* sensor, i2c_inst_t* i2c, uint8_t sda, uint8_t scl, uint8_t addr);
 
-/**
- * @brief Inicialização simplificada (endereço padrão).
- */
-static inline bool aht10_init_default(AHT10 *sensor, i2c_inst_t *i2c) {
-    return aht10_init(sensor, i2c, AHT10_ADDRESS_DEFAULT);
-}
 
-/**
- * @brief Realiza uma medição e atualiza a struct.
- * 
- * @param sensor Ponteiro para struct AHT10.
- * @return true se leitura ok, false se erro.
- */
+// -----------------------------
+// Funções de leitura
+// -----------------------------
+
+//Realiza uma medição e atualiza a struct. true se leitura ok, false se erro.
 bool aht10_read(AHT10 *sensor);
-
-/**
- * @brief Obtém a temperatura em °C.
- * 
- * @param sensor Ponteiro para struct AHT10.
- * @return Temperatura em °C ou -1000 em caso de erro.
- */
+//Obtém a temperatura em °C. retorna Temperatura em °C ou -1000 em caso de erro.
 float aht10_get_temperature(AHT10 *sensor);
-
-/**
- * @brief Obtém a umidade relativa em %.
- * 
- * @param sensor Ponteiro para struct AHT10.
- * @return Umidade %RH ou -1 em caso de erro.
- */
+//Obtém a umidade relativa em %. retorna Umidade %RH ou -1 em caso de erro.
 float aht10_get_humidity(AHT10 *sensor);
-
-/**
- * @brief Calcula o ponto de orvalho (dew point).
- * 
- * @param sensor Ponteiro para struct AHT10.
- * @return Ponto de orvalho em °C ou -1000 em caso de erro.
- */
+// Calcula o ponto de orvalho (dew point). Ponto de orvalho em °C ou -1000 em caso de erro.
 float aht10_get_dew_point(AHT10 *sensor);
 
 #endif // AHT10_H

@@ -42,7 +42,7 @@ pico_set_program_version(2_questao "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(2_questao 0)
-pico_enable_stdio_usb(2_questao 0)
+pico_enable_stdio_usb(2_questao 1)
 
 # Add the standard library to the build
 target_link_libraries(2_questao
@@ -51,12 +51,19 @@ target_link_libraries(2_questao
 # Add the standard include files to the build
 target_include_directories(2_questao PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/lib
 )
+
+# Adicionar os arquivos da biblioteca ao projeto 
+target_sources(2_questao PRIVATE 
+        lib/aht10/aht10.c
+        lib/ssd1306/ssd1306_i2c.c
+) 
 
 # Add any user requested libraries
 target_link_libraries(2_questao 
-        
-        )
+        hardware_i2c
+)
 
 pico_add_extra_outputs(2_questao)
 
