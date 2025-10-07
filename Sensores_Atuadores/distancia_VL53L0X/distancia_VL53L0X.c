@@ -60,7 +60,7 @@ int main() {
         if (distance_cm == 6553) {
             printf("Timeout ou erro de leitura.\n");
         } else {
-            // Um valor muito alto (>8000) geralmente indica que o alvo está fora do alcance do sensor.
+            // Um valor muito alto (>800) geralmente indica que o alvo está fora do alcance do sensor.
             if (distance_cm > 800) {
                  printf("Fora de alcance.\n");
             } else {
