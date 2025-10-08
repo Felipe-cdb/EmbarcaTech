@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
-#include "hardware/pwm.h"
 #include "fs90r/fs90r.h"    // funções da biblioteca FS90R
 
 #define SERVO_PIN 0
