@@ -139,6 +139,7 @@ int main() {
 
         } else {
             printf("Erro na leitura crua do MPU6050.\n");
+            return -1;
         }
         sleep_ms(1000);
     }
