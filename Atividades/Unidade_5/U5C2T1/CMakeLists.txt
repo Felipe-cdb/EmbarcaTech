@@ -41,7 +41,7 @@ pico_set_program_name(U5C2T1 "U5C2T1")
 pico_set_program_version(U5C2T1 "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(U5C2T1 0)
+pico_enable_stdio_uart(U5C2T1 1)
 pico_enable_stdio_usb(U5C2T1 1)
 
 # Add the standard library to the build
@@ -51,12 +51,24 @@ target_link_libraries(U5C2T1
 # Add the standard include files to the build
 target_include_directories(U5C2T1 PRIVATE
         ${CMAKE_CURRENT_LIST_DIR}
+        ${CMAKE_CURRENT_LIST_DIR}/lib
 )
+
+# Adicionar os arquivos da biblioteca ao projeto 
+target_sources(U5C2T1 PRIVATE 
+        lib/aht10/aht10.c
+        lib/bitdoglab_sdcard/diskio.c
+        lib/bitdoglab_sdcard/ff.c
+        lib/bitdoglab_sdcard/ffunicode.c
+        lib/bitdoglab_sdcard/sd_card.c
+        lib/vl53l0x/vl53l0x.c
+) 
 
 # Add any user requested libraries
 target_link_libraries(U5C2T1 
-        
-        )
+        hardware_i2c
+        hardware_spi
+)
 
 pico_add_extra_outputs(U5C2T1)
 
