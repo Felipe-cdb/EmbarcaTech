@@ -63,7 +63,6 @@ int main()
     }
    
     char buffer_escrita[150];
-    // char buffer_leitura[150];
     printf("SD Card inicializado com sucesso!\n");
     sleep_ms(1000);
 
