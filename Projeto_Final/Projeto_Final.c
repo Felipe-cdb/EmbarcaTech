@@ -70,6 +70,10 @@ volatile uint32_t visitas_dia = 0;
 volatile uint32_t vendas_dia  = 0;
 volatile uint32_t passagens   = 0;
 
+/* ===================== DISTÂNCIA COMPARTILHADA ===================== */
+// Valor atualizado apenas pela TaskDistanceSensor
+volatile uint16_t distancia_atual_cm = 0;
+
 /* ===================== FILAS ===================== */
 
 QueueHandle_t q_display;
@@ -106,6 +110,11 @@ void TaskDistanceSensor(void *p) {
     for (;;) {
         uint16_t dist = vl53l0x_read_continuous_cm(&sensor_dist);
 
+        // Atualiza valor global compartilhado
+        if (dist != 6553) {
+            distancia_atual_cm = dist;
+        }
+
         printf("Distancia lida: %d cm\n", dist);
 
         // Detecta alguém passando
@@ -134,7 +143,6 @@ void TaskDistanceSensor(void *p) {
         vTaskDelay(pdMS_TO_TICKS(200));
     }
 }
-
 
 /* ===================== TASK BOTÃO COMPRA ===================== */
 
@@ -220,7 +228,7 @@ void TaskSDLogger(void *p) {
 
 void TaskHealthMonitor(void *p) {
     for (;;) {
-        if (vl53l0x_read_single_cm(&sensor_dist) == 6553 ||
+        if (distancia_atual_cm == 6553 ||
             aht10_get_temperature(&sensor_temp) < -900) {
 
             gpio_put(LED_MATRIX_ERR, 1);
@@ -250,6 +258,12 @@ int main() {
 
     ssd1306_init();
 
+    display_area.start_column = 0;
+    display_area.end_column   = ssd1306_width - 1;
+    display_area.start_page   = 0;
+    display_area.end_page     = ssd1306_n_pages - 1;
+    calculate_render_area_buffer_length(&display_area);
+
     memset(ssd_buffer, 0, ssd1306_buffer_length);
 
     char *boot_text[] = {
@@ -271,7 +285,6 @@ int main() {
 
     render_on_display(ssd_buffer, &display_area);
     sleep_ms(2000);
-
 
     /* -------- GPIO -------- */
     gpio_init(LED_ENTRADA);
