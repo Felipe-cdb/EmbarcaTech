@@ -5,11 +5,22 @@
 // Biblioteca para BUZZER
 #include "hardware/pwm.h"
 #include "hardware/clocks.h"
+// Biblioteca para Display OLED
+#include <string.h>             // memset
+#include <ctype.h>              // toupper
+#include "hardware/i2c.h"       // i2c_init e controle do I2C
+#include "ssd1306/ssd1306.h"    // funções da biblioteca SSD1306
 
-// --- Configuração das Porta I2C da BitDogLab ---
-#define I2C_PORT_DIST i2c1
-const uint DIST_SDA_PIN = 2;
-const uint DIST_SCL_PIN = 3;
+
+// --- Configuração das Porta I2C para Sensor Distancia ---
+#define I2C_PORT_DIST i2c0
+const uint DIST_SDA_PIN = 0;
+const uint DIST_SCL_PIN = 1;
+
+// --- Definição dos pinos I2C1 usados para o display ---
+#define I2C_PORT_DISPLAY i2c1
+const uint DISPLAY_SDA_PIN = 14;
+const uint DISPLAY_SCL_PIN = 15;
 
 // --- Configuração do LED-RGB ---
 #define LED_VERDE     11
@@ -51,6 +62,20 @@ typedef struct {
     buzzer_state_t state;
     absolute_time_t timeout;
 } buzzer_t;
+
+// -----------------------------------------------------------------------------
+// ----------- Controle do Display OLED SSD1306 --------------------------------
+// -----------------------------------------------------------------------------
+
+static uint8_t ssd[ssd1306_buffer_length];
+
+static struct render_area frame_area = {
+    .start_column = 0,
+    .end_column   = ssd1306_width - 1,
+    .start_page   = 0,
+    .end_page     = ssd1306_n_pages - 1
+};
+
 
 // -----------------------------------------------------------------------------
 // ----------- Funções LED RGB ---------------------------------------------------
@@ -178,6 +203,123 @@ void buzzer_update(buzzer_t* buzzer) {
     }
 }
 
+
+// -----------------------------------------------------------------------------
+// ----------- Setup do Display OLED --------------------------------------------
+// -----------------------------------------------------------------------------
+
+void setup_displayOLED(){
+    // Inicializa o I2C para o display
+    i2c_init(I2C_PORT_DISPLAY, ssd1306_i2c_clock * 1000);
+    gpio_set_function(DISPLAY_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(DISPLAY_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(DISPLAY_SDA_PIN);
+    gpio_pull_up(DISPLAY_SCL_PIN);
+
+    // Inicializa o display
+    ssd1306_init();
+
+    calculate_render_area_buffer_length(&frame_area);
+
+    // Limpa tela
+    memset(ssd, 0, ssd1306_buffer_length);
+    render_on_display(ssd, &frame_area);
+
+    // Tela inicial
+    char *text[] = {
+        " Bem-vindos!   ",
+        " Sistema de    ",
+        " Monitoramento ",
+        " Iniciando...  ",
+        "        ______ ",
+        "       |(.)(.)|",
+        "       |  --  |",
+        "       |      |",
+    };
+
+    int y = 0;
+    for (uint i = 0; i < count_of(text); i++) {
+        ssd1306_draw_string(ssd, 5, y, text[i]);
+        y += 8;
+    }
+
+    render_on_display(ssd, &frame_area);
+}
+
+// -----------------------------------------------------------------------------
+// ----------- Funções de Mensagens no Display ---------------------------------
+// -----------------------------------------------------------------------------
+void display_erro_sensorDistancia(){
+    memset(ssd, 0, ssd1306_buffer_length);
+
+    char *text[] = {
+        "   ERRO!       ",
+        "               ",
+        " Verifique se  ",
+        " o Sensor de   ",
+        " Distancia     ",
+        " esta          ",
+        " danificado!   ",
+        "               ",
+    };
+
+    int y = 0;
+    for (uint i = 0; i < count_of(text); i++) {
+        ssd1306_draw_string(ssd, 5, y, text[i]);
+        y += 8;
+    }
+
+    render_on_display(ssd, &frame_area);
+}
+
+void display_sem_alcance_sensorDistancia(){
+    memset(ssd, 0, ssd1306_buffer_length);
+
+
+    char *text[] = {
+        "               ",
+        "    Ajuste     ",
+        "  Corretamente ",
+        "  a Distancia  ",
+        "  de Entrada!  ",
+        "               ",
+        " Ate Led Ciano ",
+        "     Apagar!   ",
+    };
+
+    int y = 0;
+    for (uint i = 0; i < count_of(text); i++) {
+        ssd1306_draw_string(ssd, 5, y, text[i]);
+        y += 8;
+    }
+
+    render_on_display(ssd, &frame_area);
+}
+
+void display_disparo_sensorDistancia(){
+    memset(ssd, 0, ssd1306_buffer_length);
+
+    char *text[] = {
+        "               ",
+        "               ",
+        "               ",
+        "  Visitante    ",
+        "  Detectado!   ",
+        "               ",
+        "               ",
+        "               ",
+    };
+
+    int y = 0;
+    for (uint i = 0; i < count_of(text); i++) {
+        ssd1306_draw_string(ssd, 5, y, text[i]);
+        y += 8;
+    }
+
+    render_on_display(ssd, &frame_area);
+}
+
+
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Distância -------------------------------------
 // -----------------------------------------------------------------------------
@@ -205,7 +347,7 @@ void setup_sensorDistancia(VL53L0X* sensorDistancia){
 int main(){
     // Inicializa stdio - todas interfaces de comunicação
     stdio_init_all();
-    sleep_ms(2000); // Aguarda inicialização do console
+    sleep_ms(4000); // Aguarda inicialização do console
 
     // Configuração dos LEDs
     setup_leds();
@@ -221,10 +363,19 @@ int main(){
     buzzer_init(&buzzerA, BUZZER_A_PIN);
     buzzer_init(&buzzerB, BUZZER_B_PIN);
 
+    sleep_ms(2000);
+
+    // Inicializa o display OLED
+    setup_displayOLED();
+
+    sleep_ms(2000);
+
     // Inicializa o sensor de Distância
     VL53L0X sensorDistancia;
     setup_sensorDistancia(&sensorDistancia);
     uint16_t ult_distance = 0;
+
+    sleep_ms(2000);
 
     // Loop principal
     while (true){
@@ -235,6 +386,7 @@ int main(){
             printf("Timeout ou erro de leitura.\n");
             led_erro_sensorDistancia();
             led_update();
+            display_erro_sensorDistancia();
             sleep_ms(10);
             continue;
         }
@@ -248,6 +400,7 @@ int main(){
 
             led_sem_alcance_sensorDistancia();
             led_update();
+            display_sem_alcance_sensorDistancia();
             sleep_ms(10);
             continue;
         }
@@ -261,9 +414,10 @@ int main(){
         // ----------------- ZONA VÁLIDA -----------------
         printf("Distancia: %d cm\n", distance_cm);
 
-        if (distance_cm <= 20){
+        if (distance_cm <= 50){
             printf("Presença detectada.\n");
             led_disparo_sensorDistancia();
+            display_disparo_sensorDistancia();
             buzzer_beep(&buzzerA, 200);
             buzzer_beep(&buzzerB, 200);
         }
@@ -271,6 +425,14 @@ int main(){
         buzzer_update(&buzzerA);
         buzzer_update(&buzzerB);
         led_update();
+        
+        // Mantém a mensagem por um breve período
+        sleep_ms(500);
+        // Limpa a tela após breve exibição
+        memset(ssd, 0, ssd1306_buffer_length);
+        render_on_display(ssd, &frame_area);
+
+        // Pequeno delay para evitar travas excessivas
         sleep_ms(10);
     }
 }
