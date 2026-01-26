@@ -319,6 +319,32 @@ void display_disparo_sensorDistancia(){
     render_on_display(ssd, &frame_area);
 }
 
+void display_distancia_sensorDistancia(uint16_t distance_cm){
+    memset(ssd, 0, ssd1306_buffer_length);
+
+    char linha1[32];
+    sprintf(linha1, "Distancia = %d", distance_cm);
+
+    char *text[] = {
+        linha1,
+        "               ",
+        "     ...       ",
+        "  Aguardando   ",
+        "   Visitante   ",
+        "     ...       ",
+        "               ",
+        "               ",
+    };
+
+    int y = 0;
+    for (uint i = 0; i < count_of(text); i++) {
+        ssd1306_draw_string(ssd, 5, y, text[i]);
+        y += 8;
+    }
+
+    render_on_display(ssd, &frame_area);
+}
+
 
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Distância -------------------------------------
@@ -347,7 +373,7 @@ void setup_sensorDistancia(VL53L0X* sensorDistancia){
 int main(){
     // Inicializa stdio - todas interfaces de comunicação
     stdio_init_all();
-    sleep_ms(4000); // Aguarda inicialização do console
+    sleep_ms(2000); // Aguarda inicialização do console
 
     // Configuração dos LEDs
     setup_leds();
@@ -363,12 +389,12 @@ int main(){
     buzzer_init(&buzzerA, BUZZER_A_PIN);
     buzzer_init(&buzzerB, BUZZER_B_PIN);
 
-    sleep_ms(2000);
+    sleep_ms(1000);
 
     // Inicializa o display OLED
     setup_displayOLED();
 
-    sleep_ms(2000);
+    sleep_ms(1000);
 
     // Inicializa o sensor de Distância
     VL53L0X sensorDistancia;
@@ -413,6 +439,7 @@ int main(){
 
         // ----------------- ZONA VÁLIDA -----------------
         printf("Distancia: %d cm\n", distance_cm);
+        display_distancia_sensorDistancia(distance_cm);
 
         if (distance_cm <= 50){
             printf("Presença detectada.\n");
