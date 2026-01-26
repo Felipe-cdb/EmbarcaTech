@@ -58,6 +58,7 @@ target_include_directories(projeto_final PRIVATE
 target_sources(projeto_final PRIVATE 
         lib/vl53l0x/vl53l0x.c
         lib/ssd1306/ssd1306_i2c.c
+        lib/aht10/aht10.c
 ) 
 
 # Add any user requested libraries

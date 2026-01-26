@@ -10,12 +10,19 @@
 #include <ctype.h>              // toupper
 #include "hardware/i2c.h"       // i2c_init e controle do I2C
 #include "ssd1306/ssd1306.h"    // funções da biblioteca SSD1306
+// Biblioteca para AHT10 - temperatura e umidade
+#include "aht10/aht10.h"
 
 
 // --- Configuração das Porta I2C para Sensor Distancia ---
 #define I2C_PORT_DIST i2c0
 const uint DIST_SDA_PIN = 0;
 const uint DIST_SCL_PIN = 1;
+
+// --- Configuração de temperatura e umidade AHT10 ---
+#define I2C_PORT_AHT10 i2c0
+const uint AHT10_SDA_PIN = 0;
+const uint AHT10_SCL_PIN = 1;
 
 // --- Definição dos pinos I2C1 usados para o display ---
 #define I2C_PORT_DISPLAY i2c1
@@ -102,6 +109,7 @@ static void led_clear_all(){
     gpio_put(LED_VERMELHO, 0);
 }
 
+// ----- LEDS para sensor de distância ----
 // --- Função para indicar erro no sensor de distância ---
 // (Não bloqueante)
 void led_erro_sensorDistancia(){
@@ -144,6 +152,20 @@ void led_disparo_sensorDistancia(){
     gpio_put(LED_AZUL, 1);
 
     led_state = LED_OK_ATIVO;
+    led_timeout = make_timeout_time_ms(500);
+}
+
+// ----- LEDS para sensor de Temperatura e Umidade AHT10 ----
+void led_erro_sensorAHT10(){
+    if (led_state == LED_ERRO_ATIVO)
+        return;
+
+    led_clear_all();
+
+    gpio_put(LED_AZUL, 1);
+    gpio_put(LED_VERMELHO, 1);
+
+    led_state = LED_ERRO_ATIVO;
     led_timeout = make_timeout_time_ms(500);
 }
 
@@ -249,6 +271,37 @@ void setup_displayOLED(){
 // -----------------------------------------------------------------------------
 // ----------- Funções de Mensagens no Display ---------------------------------
 // -----------------------------------------------------------------------------
+
+void display_info_gerais(uint16_t distance_cm, float temperature, float humidity){
+    memset(ssd, 0, ssd1306_buffer_length);
+
+    char linha1[32];
+    sprintf(linha1, "Distancia = %d", distance_cm);
+    char linha2[32];
+    sprintf(linha2, "Temperatura: %.2f C", temperature);
+    char linha3[32];
+    sprintf(linha3, "Umidade: %.2f %%", humidity);
+
+    char *text[] = {
+        linha1,
+        "               ",
+        "     ...       ",
+        "  Aguardando   ",
+        "   Visitante   ",
+        "     ...       ",
+        linha2,
+        linha3,
+    };
+
+    int y = 0;
+    for (uint i = 0; i < count_of(text); i++) {
+        ssd1306_draw_string(ssd, 5, y, text[i]);
+        y += 8;
+    }
+
+    render_on_display(ssd, &frame_area);
+}
+
 void display_erro_sensorDistancia(){
     memset(ssd, 0, ssd1306_buffer_length);
 
@@ -319,20 +372,17 @@ void display_disparo_sensorDistancia(){
     render_on_display(ssd, &frame_area);
 }
 
-void display_distancia_sensorDistancia(uint16_t distance_cm){
+void display_erro_sensorAHT10(){
     memset(ssd, 0, ssd1306_buffer_length);
 
-    char linha1[32];
-    sprintf(linha1, "Distancia = %d", distance_cm);
-
     char *text[] = {
-        linha1,
+        "   ERRO!       ",
         "               ",
-        "     ...       ",
-        "  Aguardando   ",
-        "   Visitante   ",
-        "     ...       ",
-        "               ",
+        " Verifique se  ",
+        " o Sensor de   ",
+        " Temperatura   ",
+        " esta          ",
+        " danificado!   ",
         "               ",
     };
 
@@ -345,9 +395,8 @@ void display_distancia_sensorDistancia(uint16_t distance_cm){
     render_on_display(ssd, &frame_area);
 }
 
-
 // -----------------------------------------------------------------------------
-// ----------- Setup do Sensor de Distância -------------------------------------
+// ----------- Setup do Sensor de Distância ------------------------------------
 // -----------------------------------------------------------------------------
 
 void setup_sensorDistancia(VL53L0X* sensorDistancia){
@@ -357,12 +406,30 @@ void setup_sensorDistancia(VL53L0X* sensorDistancia){
         while (1){
             led_erro_sensorDistancia();
             led_update();
+            display_erro_sensorDistancia();
             sleep_ms(10); // pequeno yield cooperativo
         }
     }
 
     // Inicia o modo de medição contínua (0ms = o mais rápido possível).
     vl53l0x_start_continuous(sensorDistancia, 0);
+    sleep_ms(1000);
+}
+
+// -----------------------------------------------------------------------------
+// ----------- Setup do Sensor de Temperatura e Umidade AHT10 ------------------
+// -----------------------------------------------------------------------------
+void setup_sensorAHT10(AHT10* sensorAHT10){
+    if (!aht10_init(sensorAHT10, I2C_PORT_AHT10, AHT10_SDA_PIN, AHT10_SCL_PIN)) {
+        printf("Erro ao inicializar AHT10!\n");
+        // Emite sinal de erro com LED e para a execução
+        while (1){
+            led_erro_sensorAHT10();
+            led_update();
+            display_erro_sensorAHT10();
+            sleep_ms(10); // pequeno yield cooperativo
+        }
+    }
     sleep_ms(1000);
 }
 
@@ -379,9 +446,7 @@ int main(){
     setup_leds();
 
     // Garante todos os LEDs desligados inicialmente
-    gpio_put(LED_VERDE, 0);
-    gpio_put(LED_AZUL, 0);
-    gpio_put(LED_VERMELHO, 0);
+    led_clear_all();
 
     // Inicializa os buzzers
     buzzer_t buzzerA;
@@ -401,11 +466,18 @@ int main(){
     setup_sensorDistancia(&sensorDistancia);
     uint16_t ult_distance = 0;
 
+    // Inicializa o sensor de Temperatura e Umidade AHT10
+    AHT10 sensorAHT10;
+    setup_sensorAHT10(&sensorAHT10);
+
     sleep_ms(2000);
 
     // Loop principal
     while (true){
         uint16_t distance_cm = vl53l0x_read_continuous_cm(&sensorDistancia);
+
+        float temperature = aht10_get_temperature(&sensorAHT10);
+        float humidity    = aht10_get_humidity(&sensorAHT10);
 
         // Timeout / erro bruto
         if (distance_cm == 6553){
@@ -439,7 +511,21 @@ int main(){
 
         // ----------------- ZONA VÁLIDA -----------------
         printf("Distancia: %d cm\n", distance_cm);
-        display_distancia_sensorDistancia(distance_cm);
+
+        // Retorno de leitura do AHT10
+        if (temperature > -1000.0f && humidity >= 0.0f) {
+            printf("Temperatura: %.2f C | Umidade: %.2f %%\n",temperature, humidity);
+        } else {
+            printf("Erro na leitura do sensor AHT10\n");
+            led_erro_sensorAHT10();
+            led_update();
+            display_erro_sensorAHT10();
+            sleep_ms(10);
+            continue;
+        }
+
+        // Display de Informações
+        display_info_gerais(distance_cm, temperature, humidity);
 
         if (distance_cm <= 50){
             printf("Presença detectada.\n");
