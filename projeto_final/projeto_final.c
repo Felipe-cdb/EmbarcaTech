@@ -460,13 +460,11 @@ void setup_sensorDistancia(VL53L0X* sensorDistancia){
             led_erro_sensorDistancia();
             led_update();
             display_erro_sensorDistancia();
-            sleep_ms(10); // pequeno yield cooperativo
         }
     }
 
     // Inicia o modo de medição contínua (0ms = o mais rápido possível).
     vl53l0x_start_continuous(sensorDistancia, 0);
-    sleep_ms(1000);
 }
 
 // -----------------------------------------------------------------------------
@@ -480,10 +478,8 @@ void setup_sensorAHT10(AHT10* sensorAHT10){
             led_erro_sensorAHT10();
             led_update();
             display_erro_sensorAHT10();
-            sleep_ms(10); // pequeno yield cooperativo
         }
     }
-    sleep_ms(1000);
 }
 
 // -----------------------------------------------------------------------------
@@ -550,12 +546,11 @@ int main(){
     // Inicializa o sensor de Distância
     VL53L0X sensorDistancia;
     setup_sensorDistancia(&sensorDistancia);
-    uint16_t ult_distance = 0;
+    sleep_ms(2000);
 
     // Inicializa o sensor de Temperatura e Umidade AHT10
     AHT10 sensorAHT10;
     setup_sensorAHT10(&sensorAHT10);
-
     sleep_ms(2000);
 
     // Loop principal
@@ -571,7 +566,6 @@ int main(){
             led_erro_sensorDistancia();
             led_update();
             display_erro_sensorDistancia();
-            sleep_ms(10);
             continue;
         }
 
@@ -585,7 +579,6 @@ int main(){
             led_sem_alcance_sensorDistancia();
             led_update();
             display_sem_alcance_sensorDistancia();
-            sleep_ms(10);
             continue;
         }
 
@@ -608,7 +601,6 @@ int main(){
             led_erro_sensorAHT10();
             led_update();
             display_erro_sensorAHT10();
-            sleep_ms(10);
             continue;
         }
 
