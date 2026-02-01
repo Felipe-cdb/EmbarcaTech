@@ -465,16 +465,10 @@ void setup_i2c0() {
 // -----------------------------------------------------------------------------
 
 bool setup_sensorDistancia(VL53L0X* sensorDistancia){
-    if (!vl53l0x_init(sensorDistancia,
-                      I2C_DIST_AHT10,
-                      DIST_AHT10_SDA_PIN,
-                      DIST_AHT10_SCL_PIN)) {
-
-        printf("ERRO: Falha ao inicializar VL53L0X\n");
+    if (!vl53l0x_init(sensorDistancia, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)){
         erro_sistema = ERRO_SENSOR_DIST;
         return false;
     }
-
     vl53l0x_start_continuous(sensorDistancia, 0);
     return true;
 }
@@ -483,12 +477,7 @@ bool setup_sensorDistancia(VL53L0X* sensorDistancia){
 // ----------- Setup do Sensor de Temperatura e Umidade AHT10 ------------------
 // -----------------------------------------------------------------------------
 bool setup_sensorAHT10(AHT10* sensorAHT10){
-    if (!aht10_init(sensorAHT10,
-                    I2C_DIST_AHT10,
-                    DIST_AHT10_SDA_PIN,
-                    DIST_AHT10_SCL_PIN)) {
-
-        printf("ERRO: Falha ao inicializar AHT10\n");
+    if (!aht10_init(sensorAHT10, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)) {
         erro_sistema = ERRO_SENSOR_AHT10;
         return false;
     }
@@ -515,7 +504,6 @@ void compra_registrada() {
         // BOTÃO FOI PRESSIONADO
         led_compra(); // Acende LED verde
         compra_display(); // Mostra mensagem de compra registrada
-            printf("Compra registrada com sucesso!\n");
         // futuro: enviar evento ao servidor
     }
 
@@ -615,7 +603,6 @@ int main(){
         // ----------------- FORA DE ALCANCE -----------------
         if (distance_cm > 800){
             if (!sensor_fora_alcance){
-                printf("Fora de alcance.\n");
                 sensor_fora_alcance = true;
             }
 
@@ -627,7 +614,6 @@ int main(){
 
         // ----------------- VOLTOU PARA ZONA VÁLIDA -----------------
         if (sensor_fora_alcance){
-            printf("Sensor voltou para zona detectável.\n");
             sensor_fora_alcance = false;
         }
 
@@ -640,7 +626,6 @@ int main(){
         if (temperature > -1000.0f && humidity >= 0.0f) {
             printf("Temperatura: %.2f C | Umidade: %.2f %%\n",temperature, humidity);
         } else {
-            printf("Erro na leitura do sensor AHT10\n");
             led_erro_sensorAHT10();
             led_update();
             display_erro_sensorAHT10();
