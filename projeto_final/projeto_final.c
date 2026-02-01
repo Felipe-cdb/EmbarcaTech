@@ -81,6 +81,18 @@ static struct render_area frame_area = {
     .end_page     = ssd1306_n_pages - 1
 };
 
+// -----------------------------------------------------------------------------
+// ----------- Controle de Erros -----------------------------------------------
+// -----------------------------------------------------------------------------
+
+typedef enum {
+    ERRO_NONE = 0,
+    ERRO_SENSOR_DIST,
+    ERRO_SENSOR_AHT10
+} erro_sistema_t;
+
+static erro_sistema_t erro_sistema = ERRO_NONE;
+
 
 // -----------------------------------------------------------------------------
 // ----------- Funções LED RGB ---------------------------------------------------
@@ -452,34 +464,35 @@ void setup_i2c0() {
 // ----------- Setup do Sensor de Distância ------------------------------------
 // -----------------------------------------------------------------------------
 
-void setup_sensorDistancia(VL53L0X* sensorDistancia){
-    if (!vl53l0x_init(sensorDistancia, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)){
-        printf("ERRO: Falha ao inicializar o sensor VL53L0X.\n");
-        // Emite sinal de erro com LED e para a execução
-        while (1){
-            led_erro_sensorDistancia();
-            led_update();
-            display_erro_sensorDistancia();
-        }
+bool setup_sensorDistancia(VL53L0X* sensorDistancia){
+    if (!vl53l0x_init(sensorDistancia,
+                      I2C_DIST_AHT10,
+                      DIST_AHT10_SDA_PIN,
+                      DIST_AHT10_SCL_PIN)) {
+
+        printf("ERRO: Falha ao inicializar VL53L0X\n");
+        erro_sistema = ERRO_SENSOR_DIST;
+        return false;
     }
 
-    // Inicia o modo de medição contínua (0ms = o mais rápido possível).
     vl53l0x_start_continuous(sensorDistancia, 0);
+    return true;
 }
 
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Temperatura e Umidade AHT10 ------------------
 // -----------------------------------------------------------------------------
-void setup_sensorAHT10(AHT10* sensorAHT10){
-    if (!aht10_init(sensorAHT10, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)) {
-        printf("Erro ao inicializar AHT10!\n");
-        // Emite sinal de erro com LED e para a execução
-        while (1){
-            led_erro_sensorAHT10();
-            led_update();
-            display_erro_sensorAHT10();
-        }
+bool setup_sensorAHT10(AHT10* sensorAHT10){
+    if (!aht10_init(sensorAHT10,
+                    I2C_DIST_AHT10,
+                    DIST_AHT10_SDA_PIN,
+                    DIST_AHT10_SCL_PIN)) {
+
+        printf("ERRO: Falha ao inicializar AHT10\n");
+        erro_sistema = ERRO_SENSOR_AHT10;
+        return false;
     }
+    return true;
 }
 
 // -----------------------------------------------------------------------------
@@ -508,6 +521,31 @@ void compra_registrada() {
 
     last_state = current;
 }
+
+// -----------------------------------------------------------------------------
+// ----------- Funções de Tratamento de Erros ----------------------------------
+// -----------------------------------------------------------------------------
+void tratar_erro_sistema(){
+    switch (erro_sistema) {
+
+        case ERRO_SENSOR_DIST:
+            led_erro_sensorDistancia();
+            display_erro_sensorDistancia();
+            break;
+
+        case ERRO_SENSOR_AHT10:
+            led_erro_sensorAHT10();
+            display_erro_sensorAHT10();
+            break;
+
+        default:
+            led_erro_geral();
+            break;
+    }
+
+    led_update();
+}
+
 
 // -----------------------------------------------------------------------------
 // ----------- Main -------------------------------------------------------------
@@ -555,6 +593,11 @@ int main(){
 
     // Loop principal
     while (true){
+        if (erro_sistema != ERRO_NONE) {
+            tratar_erro_sistema();
+            sleep_ms(50); // temporário (vira vTaskDelay no RTOS)
+            continue;
+        }
         uint16_t distance_cm = vl53l0x_read_continuous_cm(&sensorDistancia);
 
         float temperature = aht10_get_temperature(&sensorAHT10);
@@ -620,6 +663,6 @@ int main(){
         led_update();
         
         // Pequeno delay para evitar travas excessivas
-        sleep_ms(100);
+        sleep_ms(100); // temporário (vira vTaskDelay no RTOS)
     }
 }
