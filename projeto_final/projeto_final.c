@@ -40,6 +40,9 @@ const uint DISPLAY_SCL_PIN = 15;
 // Configuração da frequência do buzzer (em Hz)
 #define BUZZER_FREQUENCY 2000
 
+// --- Botão de compra ---
+#define BOTAO_COMPRA_PIN 5
+
 // -----------------------------------------------------------------------------
 // ----------- Controle não bloqueante do LED -----------------------------------
 // -----------------------------------------------------------------------------
@@ -109,6 +112,19 @@ static void led_clear_all(){
     gpio_put(LED_VERMELHO, 0);
 }
 
+// --- Led para erro geral ---
+void led_erro_geral(){
+    if (led_state == LED_ERRO_ATIVO)
+        return;
+
+    led_clear_all();
+
+    gpio_put(LED_VERMELHO, 1);
+
+    led_state = LED_ERRO_ATIVO;
+    led_timeout = make_timeout_time_ms(500);
+}
+
 // ----- LEDS para sensor de distância ----
 // --- Função para indicar erro no sensor de distância ---
 // (Não bloqueante)
@@ -168,6 +184,19 @@ void led_erro_sensorAHT10(){
     led_state = LED_ERRO_ATIVO;
     led_timeout = make_timeout_time_ms(500);
 }
+
+// --- Led compra realizada com sucesso ---
+void led_compra(){
+    if (led_state == LED_OK_ATIVO)
+        return;
+
+    led_clear_all();
+
+    gpio_put(LED_VERDE, 1);
+
+    led_state = LED_OK_ATIVO;
+    led_timeout = make_timeout_time_ms(500);
+}   
 
 // -----------------------------------------------------------------------------
 // ----------- Setup dos LEDs ---------------------------------------------------
@@ -395,6 +424,26 @@ void display_erro_sensorAHT10(){
     render_on_display(ssd, &frame_area);
 }
 
+void compra_display(){
+    memset(ssd, 0, ssd1306_buffer_length);
+
+    char *text[] = {
+        "               ",
+        "   COMPRA      ",
+        "   Registrada   ",
+        "   COM SUCESSO ",
+        "               ",
+    };
+
+    int y = 0;
+    for (uint i = 0; i < count_of(text); i++) {
+        ssd1306_draw_string(ssd, 5, y, text[i]);
+        y += 8;
+    }
+
+    render_on_display(ssd, &frame_area);
+}
+
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Distância ------------------------------------
 // -----------------------------------------------------------------------------
@@ -434,6 +483,36 @@ void setup_sensorAHT10(AHT10* sensorAHT10){
 }
 
 // -----------------------------------------------------------------------------
+// ----------- Setup do Botão de compra ----------------------------------------
+// -----------------------------------------------------------------------------
+void setup_botao_compra(){
+    gpio_init(BOTAO_COMPRA_PIN);
+    gpio_set_dir(BOTAO_COMPRA_PIN, GPIO_IN);
+    gpio_pull_up(BOTAO_COMPRA_PIN); // Habilita o resistor pull-up interno
+}
+
+// -----------------------------------------------------------------------------
+// ----------- Funções do Botão de compra --------------------------------------
+// -----------------------------------------------------------------------------
+void compra_registrada() {
+    static bool last_state = true;
+    bool current = gpio_get(BOTAO_COMPRA_PIN);
+
+    if (last_state && !current) {
+        // BOTÃO FOI PRESSIONADO
+        led_compra(); // Acende LED verde
+        compra_display(); // Mostra mensagem de compra registrada
+        printf("Compra registrada com sucesso!\n");
+        // futuro: enviar evento ao servidor
+
+        // debounce simples
+        sleep_ms(100); // Atraso para evitar múltiplas leituras
+    }
+
+    last_state = current;
+}
+
+// -----------------------------------------------------------------------------
 // ----------- Main -------------------------------------------------------------
 // -----------------------------------------------------------------------------
 
@@ -447,6 +526,9 @@ int main(){
 
     // Garante todos os LEDs desligados inicialmente
     led_clear_all();
+
+    // Configuração do botão de compra
+    setup_botao_compra();
 
     // Inicializa os buzzers
     buzzer_t buzzerA;
@@ -511,6 +593,8 @@ int main(){
 
         // ----------------- ZONA VÁLIDA -----------------
         printf("Distancia: %d cm\n", distance_cm);
+
+        compra_registrada();
 
         // Retorno de leitura do AHT10
         if (temperature > -1000.0f && humidity >= 0.0f) {
