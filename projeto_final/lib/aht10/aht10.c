@@ -52,7 +52,7 @@ bool aht10_init_custom(AHT10* sensor, i2c_inst_t* i2c, uint8_t sda, uint8_t scl,
     sensor->humidity = 0.0f;
 
     // Configura pinos e inicializa I2C
-    aht10_setup_i2c(sensor->i2c, sensor->sda, sensor->scl);
+    // aht10_setup_i2c(sensor->i2c, sensor->sda, sensor->scl); // Comentado para evitar reinicialização do I2C já usado por outro sensor em projeto_final.c
 
     // Reset do sensor
     if (!aht10_write_cmd(sensor, &CMD_RESET, 1, false)) {

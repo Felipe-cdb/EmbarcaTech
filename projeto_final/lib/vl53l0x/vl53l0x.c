@@ -52,7 +52,7 @@ bool vl53l0x_init_custom(VL53L0X* sensor, i2c_inst_t* i2c_port, uint8_t sda, uin
     sensor->io_timeout = 1000; // Timeout de 1 segundo para operações.
 
     // Configura pinos e inicializa I2C
-    vl53l0x_setup_i2c(sensor->i2c, sensor->sda, sensor->scl);
+    // vl53l0x_setup_i2c(sensor->i2c, sensor->sda, sensor->scl); // Comentado para evitar reinicialização do I2C já usado por outro sensor em projeto_final.c
 
     // A sequência abaixo é uma implementação complexa e específica do VL53L0X,
     // necessária para calibrar e configurar corretamente o sensor.

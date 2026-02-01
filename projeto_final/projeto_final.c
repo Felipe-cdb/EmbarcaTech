@@ -14,15 +14,10 @@
 #include "aht10/aht10.h"
 
 
-// --- Configuração das Porta I2C para Sensor Distancia ---
-#define I2C_PORT_DIST i2c0
-const uint DIST_SDA_PIN = 0;
-const uint DIST_SCL_PIN = 1;
-
-// --- Configuração de temperatura e umidade AHT10 ---
-#define I2C_PORT_AHT10 i2c0
-const uint AHT10_SDA_PIN = 0;
-const uint AHT10_SCL_PIN = 1;
+// --- Configuração das Porta I2C para Sensor Distancia e AHT10---
+#define I2C_DIST_AHT10 i2c0
+const uint DIST_AHT10_SDA_PIN = 0;
+const uint DIST_AHT10_SCL_PIN = 1;
 
 // --- Definição dos pinos I2C1 usados para o display ---
 #define I2C_PORT_DISPLAY i2c1
@@ -444,12 +439,21 @@ void compra_display(){
     render_on_display(ssd, &frame_area);
 }
 
+// ----------------------------------------------------------------------------- // ----------- Setup do I2C0 para AHT10 e VL53L0X ------------------------------ // ----------------------------------------------------------------------------- 
+void setup_i2c0() { 
+    i2c_init(I2C_DIST_AHT10, 400 * 1000);
+    gpio_set_function(DIST_AHT10_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(DIST_AHT10_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(DIST_AHT10_SDA_PIN);
+    gpio_pull_up(DIST_AHT10_SCL_PIN); 
+}
+
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Distância ------------------------------------
 // -----------------------------------------------------------------------------
 
 void setup_sensorDistancia(VL53L0X* sensorDistancia){
-    if (!vl53l0x_init(sensorDistancia, I2C_PORT_DIST, DIST_SDA_PIN, DIST_SCL_PIN)){
+    if (!vl53l0x_init(sensorDistancia, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)){
         printf("ERRO: Falha ao inicializar o sensor VL53L0X.\n");
         // Emite sinal de erro com LED e para a execução
         while (1){
@@ -469,7 +473,7 @@ void setup_sensorDistancia(VL53L0X* sensorDistancia){
 // ----------- Setup do Sensor de Temperatura e Umidade AHT10 ------------------
 // -----------------------------------------------------------------------------
 void setup_sensorAHT10(AHT10* sensorAHT10){
-    if (!aht10_init(sensorAHT10, I2C_PORT_AHT10, AHT10_SDA_PIN, AHT10_SCL_PIN)) {
+    if (!aht10_init(sensorAHT10, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)) {
         printf("Erro ao inicializar AHT10!\n");
         // Emite sinal de erro com LED e para a execução
         while (1){
@@ -502,11 +506,8 @@ void compra_registrada() {
         // BOTÃO FOI PRESSIONADO
         led_compra(); // Acende LED verde
         compra_display(); // Mostra mensagem de compra registrada
-        printf("Compra registrada com sucesso!\n");
+            printf("Compra registrada com sucesso!\n");
         // futuro: enviar evento ao servidor
-
-        // debounce simples
-        sleep_ms(100); // Atraso para evitar múltiplas leituras
     }
 
     last_state = current;
@@ -540,6 +541,9 @@ int main(){
 
     // Inicializa o display OLED
     setup_displayOLED();
+
+    // Configuração do I2C0 para sensores de distância e AHT10
+    setup_i2c0();
 
     sleep_ms(1000);
 
@@ -623,13 +627,7 @@ int main(){
         buzzer_update(&buzzerB);
         led_update();
         
-        // Mantém a mensagem por um breve período
-        sleep_ms(500);
-        // Limpa a tela após breve exibição
-        memset(ssd, 0, ssd1306_buffer_length);
-        render_on_display(ssd, &frame_area);
-
         // Pequeno delay para evitar travas excessivas
-        sleep_ms(10);
+        sleep_ms(100);
     }
 }
