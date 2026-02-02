@@ -1,4 +1,10 @@
 #include <stdio.h>
+// FreeRTOS
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "semphr.h"
+// Biblioteca padrão do Pico
 #include "pico/stdlib.h"
 // Biblioteca do sensor VL53L0X
 #include "vl53l0x/vl53l0x.h"
@@ -12,7 +18,6 @@
 #include "ssd1306/ssd1306.h"    // funções da biblioteca SSD1306
 // Biblioteca para AHT10 - temperatura e umidade
 #include "aht10/aht10.h"
-
 
 // --- Configuração das Porta I2C para Sensor Distancia e AHT10---
 #define I2C_DIST_AHT10 i2c0
@@ -68,6 +73,8 @@ typedef struct {
     absolute_time_t timeout;
 } buzzer_t;
 
+buzzer_t buzzerA;
+buzzer_t buzzerB;
 // -----------------------------------------------------------------------------
 // ----------- Controle do Display OLED SSD1306 --------------------------------
 // -----------------------------------------------------------------------------
@@ -451,7 +458,9 @@ void compra_display(){
     render_on_display(ssd, &frame_area);
 }
 
-// ----------------------------------------------------------------------------- // ----------- Setup do I2C0 para AHT10 e VL53L0X ------------------------------ // ----------------------------------------------------------------------------- 
+// -----------------------------------------------------------------------------
+// ----------- Setup do I2C0 para AHT10 e VL53L0X ------------------------------
+// ----------------------------------------------------------------------------- 
 void setup_i2c0() { 
     i2c_init(I2C_DIST_AHT10, 400 * 1000);
     gpio_set_function(DIST_AHT10_SDA_PIN, GPIO_FUNC_I2C);
@@ -463,7 +472,7 @@ void setup_i2c0() {
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Distância ------------------------------------
 // -----------------------------------------------------------------------------
-
+VL53L0X sensorDistancia;
 bool setup_sensorDistancia(VL53L0X* sensorDistancia){
     if (!vl53l0x_init(sensorDistancia, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)){
         erro_sistema = ERRO_SENSOR_DIST;
@@ -476,6 +485,7 @@ bool setup_sensorDistancia(VL53L0X* sensorDistancia){
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Temperatura e Umidade AHT10 ------------------
 // -----------------------------------------------------------------------------
+AHT10 sensorAHT10;
 bool setup_sensorAHT10(AHT10* sensorAHT10){
     if (!aht10_init(sensorAHT10, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)) {
         erro_sistema = ERRO_SENSOR_AHT10;
@@ -534,6 +544,62 @@ void tratar_erro_sistema(){
     led_update();
 }
 
+// -----------------------------------------------------------------------------
+// ----------- Tarefa Principal do FreeRTOS ------------------------------------
+// -----------------------------------------------------------------------------
+void task_main(void *pvParameters) {
+    (void) pvParameters;
+
+    for (;;) {
+
+        if (erro_sistema != ERRO_NONE) {
+            tratar_erro_sistema();
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        uint16_t distance_cm = vl53l0x_read_continuous_cm(&sensorDistancia);
+
+        float temperature = aht10_get_temperature(&sensorAHT10);
+        float humidity    = aht10_get_humidity(&sensorAHT10);
+
+        if (distance_cm == 6553) {
+            erro_sistema = ERRO_SENSOR_DIST;
+            continue;
+        }
+
+        if (distance_cm > 800) {
+            led_sem_alcance_sensorDistancia();
+            display_sem_alcance_sensorDistancia();
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        compra_registrada();
+
+        if (temperature <= -1000.0f || humidity < 0.0f) {
+            erro_sistema = ERRO_SENSOR_AHT10;
+            continue;
+        }
+
+        display_info_gerais(distance_cm, temperature, humidity);
+
+        if (distance_cm <= 50) {
+            led_disparo_sensorDistancia();
+            display_disparo_sensorDistancia();
+            buzzer_beep(&buzzerA, 200);
+            buzzer_beep(&buzzerB, 200);
+        }
+
+        buzzer_update(&buzzerA);
+        buzzer_update(&buzzerB);
+        led_update();
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+
 
 // -----------------------------------------------------------------------------
 // ----------- Main -------------------------------------------------------------
@@ -542,7 +608,6 @@ void tratar_erro_sistema(){
 int main(){
     // Inicializa stdio - todas interfaces de comunicação
     stdio_init_all();
-    sleep_ms(2000); // Aguarda inicialização do console
 
     // Configuração dos LEDs
     setup_leds();
@@ -554,12 +619,8 @@ int main(){
     setup_botao_compra();
 
     // Inicializa os buzzers
-    buzzer_t buzzerA;
-    buzzer_t buzzerB;
     buzzer_init(&buzzerA, BUZZER_A_PIN);
     buzzer_init(&buzzerB, BUZZER_B_PIN);
-
-    sleep_ms(1000);
 
     // Inicializa o display OLED
     setup_displayOLED();
@@ -567,87 +628,24 @@ int main(){
     // Configuração do I2C0 para sensores de distância e AHT10
     setup_i2c0();
 
-    sleep_ms(1000);
-
     // Inicializa o sensor de Distância
-    VL53L0X sensorDistancia;
     setup_sensorDistancia(&sensorDistancia);
-    sleep_ms(2000);
 
     // Inicializa o sensor de Temperatura e Umidade AHT10
-    AHT10 sensorAHT10;
     setup_sensorAHT10(&sensorAHT10);
-    sleep_ms(2000);
 
     // Loop principal
-    while (true){
-        if (erro_sistema != ERRO_NONE) {
-            tratar_erro_sistema();
-            sleep_ms(50); // temporário (vira vTaskDelay no RTOS)
-            continue;
-        }
-        uint16_t distance_cm = vl53l0x_read_continuous_cm(&sensorDistancia);
+    xTaskCreate(
+        task_main,
+        "MainTask",
+        2048,
+        NULL,
+        tskIDLE_PRIORITY + 1,
+        NULL
+    );
 
-        float temperature = aht10_get_temperature(&sensorAHT10);
-        float humidity    = aht10_get_humidity(&sensorAHT10);
+    vTaskStartScheduler();
 
-        // Timeout / erro bruto
-        if (distance_cm == 6553){
-            printf("Timeout ou erro de leitura.\n");
-            led_erro_sensorDistancia();
-            led_update();
-            display_erro_sensorDistancia();
-            continue;
-        }
-
-        // ----------------- FORA DE ALCANCE -----------------
-        if (distance_cm > 800){
-            if (!sensor_fora_alcance){
-                sensor_fora_alcance = true;
-            }
-
-            led_sem_alcance_sensorDistancia();
-            led_update();
-            display_sem_alcance_sensorDistancia();
-            continue;
-        }
-
-        // ----------------- VOLTOU PARA ZONA VÁLIDA -----------------
-        if (sensor_fora_alcance){
-            sensor_fora_alcance = false;
-        }
-
-        // ----------------- ZONA VÁLIDA -----------------
-        printf("Distancia: %d cm\n", distance_cm);
-
-        compra_registrada();
-
-        // Retorno de leitura do AHT10
-        if (temperature > -1000.0f && humidity >= 0.0f) {
-            printf("Temperatura: %.2f C | Umidade: %.2f %%\n",temperature, humidity);
-        } else {
-            led_erro_sensorAHT10();
-            led_update();
-            display_erro_sensorAHT10();
-            continue;
-        }
-
-        // Display de Informações
-        display_info_gerais(distance_cm, temperature, humidity);
-
-        if (distance_cm <= 50){
-            printf("Presença detectada.\n");
-            led_disparo_sensorDistancia();
-            display_disparo_sensorDistancia();
-            buzzer_beep(&buzzerA, 200);
-            buzzer_beep(&buzzerB, 200);
-        }
-
-        buzzer_update(&buzzerA);
-        buzzer_update(&buzzerB);
-        led_update();
-        
-        // Pequeno delay para evitar travas excessivas
-        sleep_ms(100); // temporário (vira vTaskDelay no RTOS)
-    }
+    // Nunca deve chegar aqui
+    while (true) {}
 }
