@@ -4,6 +4,7 @@
 #include "task.h"
 #include "queue.h"
 #include "semphr.h"
+#include "event_groups.h"
 // Biblioteca padrão do Pico
 #include "pico/stdlib.h"
 // Biblioteca do sensor VL53L0X
@@ -23,6 +24,8 @@
 #define I2C_DIST_AHT10 i2c0
 const uint DIST_AHT10_SDA_PIN = 0;
 const uint DIST_AHT10_SCL_PIN = 1;
+
+#define DIST_MAX_VALIDA 819
 
 // --- Definição dos pinos I2C1 usados para o display ---
 #define I2C_PORT_DISPLAY i2c1
@@ -89,16 +92,25 @@ static struct render_area frame_area = {
 };
 
 // -----------------------------------------------------------------------------
-// ----------- Controle de Erros -----------------------------------------------
+// ----------- Event Group do Sistema ------------------------------------------
 // -----------------------------------------------------------------------------
 
-typedef enum {
-    ERRO_NONE = 0,
-    ERRO_SENSOR_DIST,
-    ERRO_SENSOR_AHT10
-} erro_sistema_t;
+EventGroupHandle_t system_events;
 
-static erro_sistema_t erro_sistema = ERRO_NONE;
+// -----------------------------------------------------------------------------
+// ----------- EventGroup - Bits do Sistema ------------------------------------
+// -----------------------------------------------------------------------------
+
+#define EVT_ERRO_SENSOR_DIST   (1 << 0)
+#define EVT_ERRO_SENSOR_AHT10  (1 << 1)
+#define EVT_ERRO_GERAL         (1 << 2)
+
+#define EVT_SEM_ALCANCE        (1 << 3)
+#define EVT_VISITANTE_DETECT  (1 << 4)
+#define EVT_COMPRA_REALIZADA  (1 << 5)
+
+#define EVT_UI_CLEAR          (1 << 6)
+
 
 
 // -----------------------------------------------------------------------------
@@ -475,7 +487,7 @@ void setup_i2c0() {
 VL53L0X sensorDistancia;
 bool setup_sensorDistancia(VL53L0X* sensorDistancia){
     if (!vl53l0x_init(sensorDistancia, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)){
-        erro_sistema = ERRO_SENSOR_DIST;
+        xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_DIST);
         return false;
     }
     vl53l0x_start_continuous(sensorDistancia, 0);
@@ -488,7 +500,7 @@ bool setup_sensorDistancia(VL53L0X* sensorDistancia){
 AHT10 sensorAHT10;
 bool setup_sensorAHT10(AHT10* sensorAHT10){
     if (!aht10_init(sensorAHT10, I2C_DIST_AHT10, DIST_AHT10_SDA_PIN, DIST_AHT10_SCL_PIN)) {
-        erro_sistema = ERRO_SENSOR_AHT10;
+        xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_AHT10);
         return false;
     }
     return true;
@@ -511,38 +523,74 @@ void compra_registrada() {
     bool current = gpio_get(BOTAO_COMPRA_PIN);
 
     if (last_state && !current) {
-        // BOTÃO FOI PRESSIONADO
-        led_compra(); // Acende LED verde
-        compra_display(); // Mostra mensagem de compra registrada
-        // futuro: enviar evento ao servidor
+        xEventGroupSetBits(system_events, EVT_COMPRA_REALIZADA);
     }
 
     last_state = current;
 }
 
 // -----------------------------------------------------------------------------
-// ----------- Funções de Tratamento de Erros ----------------------------------
+// ----------- Tarefa de gestão de Inteface LED e Display ----------------------
 // -----------------------------------------------------------------------------
-void tratar_erro_sistema(){
-    switch (erro_sistema) {
 
-        case ERRO_SENSOR_DIST:
+void task_ui(void *pvParameters) {
+    (void) pvParameters;
+
+    EventBits_t events;
+
+    for (;;) {
+
+        events = xEventGroupWaitBits(
+            system_events,
+            EVT_ERRO_SENSOR_DIST |
+            EVT_ERRO_SENSOR_AHT10 |
+            EVT_ERRO_GERAL |
+            EVT_SEM_ALCANCE |
+            EVT_VISITANTE_DETECT |
+            EVT_COMPRA_REALIZADA |
+            EVT_UI_CLEAR,
+            pdTRUE,     // limpa bits ao sair
+            pdFALSE,    // qualquer bit
+            portMAX_DELAY
+        );
+
+        // ---------------- ERROS ----------------
+        if (events & EVT_ERRO_SENSOR_DIST) {
             led_erro_sensorDistancia();
             display_erro_sensorDistancia();
-            break;
-
-        case ERRO_SENSOR_AHT10:
+        }
+        else if (events & EVT_ERRO_SENSOR_AHT10) {
             led_erro_sensorAHT10();
             display_erro_sensorAHT10();
-            break;
-
-        default:
+        }
+        else if (events & EVT_ERRO_GERAL) {
             led_erro_geral();
-            break;
-    }
+        }
 
-    led_update();
+        // ---------------- ESTADOS ----------------
+        else if (events & EVT_SEM_ALCANCE) {
+            led_sem_alcance_sensorDistancia();
+            display_sem_alcance_sensorDistancia();
+        }
+        else if (events & EVT_VISITANTE_DETECT) {
+            led_disparo_sensorDistancia();
+            display_disparo_sensorDistancia();
+        }
+        else if (events & EVT_COMPRA_REALIZADA) {
+            led_compra();
+            compra_display();
+        }
+
+        // loop de manutenção
+        for (int i = 0; i < 5; i++) {
+            led_update();
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
 }
+
 
 // -----------------------------------------------------------------------------
 // ----------- Tarefa Principal do FreeRTOS ------------------------------------
@@ -552,53 +600,69 @@ void task_main(void *pvParameters) {
 
     for (;;) {
 
-        if (erro_sistema != ERRO_NONE) {
-            tratar_erro_sistema();
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
-
+        // ---------------------------------------------------------------------
+        // Leitura dos sensores
+        // ---------------------------------------------------------------------
         uint16_t distance_cm = vl53l0x_read_continuous_cm(&sensorDistancia);
 
         float temperature = aht10_get_temperature(&sensorAHT10);
         float humidity    = aht10_get_humidity(&sensorAHT10);
+        
+        // ---------------------------------------------------------------------
+        // Tratamento de erro - Sensor de Distância
+        // ---------------------------------------------------------------------
+        static bool sem_alcance_ativo = false;
+        if (distance_cm > DIST_MAX_VALIDA) {
+            if (!sem_alcance_ativo) {
+                xEventGroupSetBits(system_events, EVT_SEM_ALCANCE);
+                sem_alcance_ativo = true;
+            }
+        } else {
+            sem_alcance_ativo = false;
+        }
 
-        if (distance_cm == 6553) {
-            erro_sistema = ERRO_SENSOR_DIST;
+        if (distance_cm == 6553 || distance_cm == 0) {
+            xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_DIST);
+            vTaskDelay(pdMS_TO_TICKS(50));
             continue;
         }
 
-        if (distance_cm > 800) {
-            led_sem_alcance_sensorDistancia();
-            display_sem_alcance_sensorDistancia();
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
-
-        compra_registrada();
-
-        if (temperature <= -1000.0f || humidity < 0.0f) {
-            erro_sistema = ERRO_SENSOR_AHT10;
-            continue;
-        }
-
-        display_info_gerais(distance_cm, temperature, humidity);
-
-        if (distance_cm <= 50) {
-            led_disparo_sensorDistancia();
-            display_disparo_sensorDistancia();
+        // ---------------------------------------------------------------------
+        // Sensor fora de alcance
+        // ---------------------------------------------------------------------
+        // Sensor fora do range configurado (estado, não erro)
+        if (distance_cm > DIST_MAX_VALIDA) {
+            xEventGroupSetBits(system_events, EVT_SEM_ALCANCE);
+        } else if (distance_cm <= 50) {
+            xEventGroupSetBits(system_events, EVT_VISITANTE_DETECT);
             buzzer_beep(&buzzerA, 200);
             buzzer_beep(&buzzerB, 200);
         }
 
+
+        // ---------------------------------------------------------------------
+        // Tratamento de erro - Sensor AHT10
+        // ---------------------------------------------------------------------
+        if (temperature <= -1000.0f || humidity < 0.0f) {
+            xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_AHT10);
+            vTaskDelay(pdMS_TO_TICKS(50));
+            continue;
+        }
+
+        // ---------------------------------------------------------------------
+        // Compra registrada (botão)
+        // ---------------------------------------------------------------------
+        compra_registrada();
+        
+        // ---------------------------------------------------------------------
+        // Atualização de atuadores não bloqueantes
+        // ---------------------------------------------------------------------
         buzzer_update(&buzzerA);
         buzzer_update(&buzzerB);
-        led_update();
 
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
-
 
 
 // -----------------------------------------------------------------------------
@@ -608,6 +672,14 @@ void task_main(void *pvParameters) {
 int main(){
     // Inicializa stdio - todas interfaces de comunicação
     stdio_init_all();
+
+    // Cria o Event Group do sistema
+    system_events = xEventGroupCreate();
+
+    if (system_events == NULL) {
+        // Falha crítica de sistema
+        xEventGroupSetBits(system_events, EVT_ERRO_GERAL);
+    }
 
     // Configuração dos LEDs
     setup_leds();
@@ -643,6 +715,16 @@ int main(){
         tskIDLE_PRIORITY + 1,
         NULL
     );
+
+    xTaskCreate(
+        task_ui,
+        "UITask",
+        2048,
+        NULL,
+        tskIDLE_PRIORITY + 1,
+        NULL
+    );
+
 
     vTaskStartScheduler();
 
