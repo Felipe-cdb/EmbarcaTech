@@ -20,6 +20,8 @@
 // Biblioteca para AHT10 - temperatura e umidade
 #include "aht10/aht10.h"
 
+QueueHandle_t q_distancia;
+
 // --- Configuração das Porta I2C para Sensor Distancia e AHT10---
 #define I2C_DIST_AHT10 i2c0
 const uint DIST_AHT10_SDA_PIN = 0;
@@ -106,10 +108,12 @@ EventGroupHandle_t system_events;
 #define EVT_ERRO_GERAL         (1 << 2)
 
 #define EVT_SEM_ALCANCE        (1 << 3)
-#define EVT_VISITANTE_DETECT  (1 << 4)
-#define EVT_COMPRA_REALIZADA  (1 << 5)
+#define EVT_VISITANTE_DETECT   (1 << 4)
+#define EVT_COMPRA_REALIZADA   (1 << 5)
+#define EVT_BUZZER_BEEP        (1 << 7)
 
-#define EVT_UI_CLEAR          (1 << 6)
+
+#define EVT_UI_CLEAR           (1 << 6)
 
 
 
@@ -474,7 +478,7 @@ void compra_display(){
 // ----------- Setup do I2C0 para AHT10 e VL53L0X ------------------------------
 // ----------------------------------------------------------------------------- 
 void setup_i2c0() { 
-    i2c_init(I2C_DIST_AHT10, 400 * 1000);
+    i2c_init(I2C_DIST_AHT10, 100 * 1000);
     gpio_set_function(DIST_AHT10_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(DIST_AHT10_SCL_PIN, GPIO_FUNC_I2C);
     gpio_pull_up(DIST_AHT10_SDA_PIN);
@@ -490,7 +494,6 @@ bool setup_sensorDistancia(VL53L0X* sensorDistancia){
         xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_DIST);
         return false;
     }
-    vl53l0x_start_continuous(sensorDistancia, 0);
     return true;
 }
 
@@ -505,6 +508,10 @@ bool setup_sensorAHT10(AHT10* sensorAHT10){
     }
     return true;
 }
+
+typedef struct {
+    uint16_t distance_cm;
+} vl53_msg_t;
 
 // -----------------------------------------------------------------------------
 // ----------- Setup do Botão de compra ----------------------------------------
@@ -528,6 +535,62 @@ void compra_registrada() {
 
     last_state = current;
 }
+
+// -----------------------------------------------------------------------------
+// ----------- Tarefa BUZZER ---------------------------------------------------
+// -----------------------------------------------------------------------------
+void task_buzzer(void *pvParameters) {
+    (void) pvParameters;
+
+    for (;;) {
+
+        xEventGroupWaitBits(
+            system_events,
+            EVT_BUZZER_BEEP,
+            pdTRUE,
+            pdFALSE,
+            portMAX_DELAY
+        );
+
+        buzzer_beep(&buzzerA, 200);
+        buzzer_beep(&buzzerB, 200);
+
+        // manutenção não bloqueante
+        while (buzzerA.state != BUZZER_IDLE || buzzerB.state != BUZZER_IDLE) {
+            buzzer_update(&buzzerA);
+            buzzer_update(&buzzerB);
+            vTaskDelay(pdMS_TO_TICKS(5));
+        }
+    }
+}
+
+
+// -----------------------------------------------------------------------------
+// ----------- Tarefa Leitura de sensor de Distancia ---------------------------
+// -----------------------------------------------------------------------------
+void task_vl53l0x(void *pvParameters) {
+    (void) pvParameters;
+
+    vl53_msg_t msg;
+
+    for (;;) {
+
+        msg.distance_cm = vl53l0x_read_single_cm(&sensorDistancia);
+
+        // Erro físico do sensor
+        if (msg.distance_cm == 0 || msg.distance_cm == 6553) {
+            xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_DIST);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            continue;
+        }
+
+        // Envia sempre o último valor (overwrite evita backlog)
+        xQueueOverwrite(q_distancia, &msg);
+
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
 
 // -----------------------------------------------------------------------------
 // ----------- Tarefa de gestão de Inteface LED e Display ----------------------
@@ -584,7 +647,7 @@ void task_ui(void *pvParameters) {
         // loop de manutenção
         for (int i = 0; i < 5; i++) {
             led_update();
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelay(pdMS_TO_TICKS(5));
         }
 
         vTaskDelay(pdMS_TO_TICKS(20));
@@ -598,69 +661,48 @@ void task_ui(void *pvParameters) {
 void task_main(void *pvParameters) {
     (void) pvParameters;
 
+    vl53_msg_t msg;
+    static bool sem_alcance_ativo = false;
+
     for (;;) {
+
+        // ---------------- VL53L0X ----------------
+        if (xQueueReceive(q_distancia, &msg, pdMS_TO_TICKS(20)) == pdPASS) {
+
+            if (msg.distance_cm > DIST_MAX_VALIDA) {
+                if (!sem_alcance_ativo) {
+                    xEventGroupSetBits(system_events, EVT_SEM_ALCANCE);
+                    sem_alcance_ativo = true;
+                }
+            } else {
+                sem_alcance_ativo = false;
+            }
+
+            if (msg.distance_cm <= 50) {
+                xEventGroupSetBits(system_events, EVT_VISITANTE_DETECT);
+                xEventGroupSetBits(system_events, EVT_BUZZER_BEEP);
+            }
+        }
 
         // ---------------------------------------------------------------------
         // Leitura dos sensores
         // ---------------------------------------------------------------------
-        uint16_t distance_cm = vl53l0x_read_continuous_cm(&sensorDistancia);
-
         float temperature = aht10_get_temperature(&sensorAHT10);
         float humidity    = aht10_get_humidity(&sensorAHT10);
         
-        // ---------------------------------------------------------------------
-        // Tratamento de erro - Sensor de Distância
-        // ---------------------------------------------------------------------
-        static bool sem_alcance_ativo = false;
-        if (distance_cm > DIST_MAX_VALIDA) {
-            if (!sem_alcance_ativo) {
-                xEventGroupSetBits(system_events, EVT_SEM_ALCANCE);
-                sem_alcance_ativo = true;
-            }
-        } else {
-            sem_alcance_ativo = false;
-        }
-
-        if (distance_cm == 6553 || distance_cm == 0) {
-            xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_DIST);
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
-        }
-
-        // ---------------------------------------------------------------------
-        // Sensor fora de alcance
-        // ---------------------------------------------------------------------
-        // Sensor fora do range configurado (estado, não erro)
-        if (distance_cm > DIST_MAX_VALIDA) {
-            xEventGroupSetBits(system_events, EVT_SEM_ALCANCE);
-        } else if (distance_cm <= 50) {
-            xEventGroupSetBits(system_events, EVT_VISITANTE_DETECT);
-            buzzer_beep(&buzzerA, 200);
-            buzzer_beep(&buzzerB, 200);
-        }
-
-
         // ---------------------------------------------------------------------
         // Tratamento de erro - Sensor AHT10
         // ---------------------------------------------------------------------
         if (temperature <= -1000.0f || humidity < 0.0f) {
             xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_AHT10);
-            vTaskDelay(pdMS_TO_TICKS(50));
-            continue;
         }
 
         // ---------------------------------------------------------------------
         // Compra registrada (botão)
         // ---------------------------------------------------------------------
         compra_registrada();
-        
-        // ---------------------------------------------------------------------
-        // Atualização de atuadores não bloqueantes
-        // ---------------------------------------------------------------------
-        buzzer_update(&buzzerA);
-        buzzer_update(&buzzerB);
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
@@ -706,25 +748,13 @@ int main(){
     // Inicializa o sensor de Temperatura e Umidade AHT10
     setup_sensorAHT10(&sensorAHT10);
 
+    q_distancia = xQueueCreate(1, sizeof(vl53_msg_t));
+
     // Loop principal
-    xTaskCreate(
-        task_main,
-        "MainTask",
-        2048,
-        NULL,
-        tskIDLE_PRIORITY + 1,
-        NULL
-    );
-
-    xTaskCreate(
-        task_ui,
-        "UITask",
-        2048,
-        NULL,
-        tskIDLE_PRIORITY + 1,
-        NULL
-    );
-
+    xTaskCreate(task_main, "MainTask", 2048, NULL, tskIDLE_PRIORITY + 1,NULL);
+    xTaskCreate(task_ui, "UITask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
+    xTaskCreate(task_vl53l0x, "VL53", 1024, NULL, tskIDLE_PRIORITY + 2, NULL);
+    xTaskCreate(task_buzzer, "Buzzer", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
 
     vTaskStartScheduler();
 
