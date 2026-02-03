@@ -21,13 +21,14 @@
 #include "aht10/aht10.h"
 
 QueueHandle_t q_distancia;
+QueueHandle_t q_aht10;
 
 // --- Configuração das Porta I2C para Sensor Distancia e AHT10---
 #define I2C_DIST_AHT10 i2c0
 const uint DIST_AHT10_SDA_PIN = 0;
 const uint DIST_AHT10_SCL_PIN = 1;
 
-#define DIST_MAX_VALIDA 819
+#define DIST_MAX_VALIDA 800 // Para erro fora de alcance
 
 // --- Definição dos pinos I2C1 usados para o display ---
 #define I2C_PORT_DISPLAY i2c1
@@ -60,7 +61,6 @@ typedef enum {
 
 static led_state_t led_state = LED_IDLE;
 static absolute_time_t led_timeout;
-static bool sensor_fora_alcance = false;
 
 // -----------------------------------------------------------------------------
 // ----------- Controle não bloqueante do BUZZER --------------------------------
@@ -99,6 +99,18 @@ static struct render_area frame_area = {
 
 EventGroupHandle_t system_events;
 
+typedef struct {
+    uint16_t distance_cm;
+    float temperature;
+    float humidity;
+    bool dados_validos;
+} system_state_t;
+
+static system_state_t system_state = {
+    .dados_validos = false
+};
+
+
 // -----------------------------------------------------------------------------
 // ----------- EventGroup - Bits do Sistema ------------------------------------
 // -----------------------------------------------------------------------------
@@ -111,7 +123,7 @@ EventGroupHandle_t system_events;
 #define EVT_VISITANTE_DETECT   (1 << 4)
 #define EVT_COMPRA_REALIZADA   (1 << 5)
 #define EVT_BUZZER_BEEP        (1 << 7)
-
+#define EVT_UI_UPDATE          (1 << 8)
 
 #define EVT_UI_CLEAR           (1 << 6)
 
@@ -497,6 +509,10 @@ bool setup_sensorDistancia(VL53L0X* sensorDistancia){
     return true;
 }
 
+typedef struct {
+    uint16_t distance_cm;
+} vl53_msg_t;
+
 // -----------------------------------------------------------------------------
 // ----------- Setup do Sensor de Temperatura e Umidade AHT10 ------------------
 // -----------------------------------------------------------------------------
@@ -510,8 +526,9 @@ bool setup_sensorAHT10(AHT10* sensorAHT10){
 }
 
 typedef struct {
-    uint16_t distance_cm;
-} vl53_msg_t;
+    float temperature;
+    float humidity;
+} aht10_msg_t;
 
 // -----------------------------------------------------------------------------
 // ----------- Setup do Botão de compra ----------------------------------------
@@ -591,6 +608,32 @@ void task_vl53l0x(void *pvParameters) {
     }
 }
 
+// -----------------------------------------------------------------------------
+// ----------- Tarefa Leitura de sensor AHT10 ----------------------------------
+// -----------------------------------------------------------------------------
+void task_aht10(void *pvParameters) {
+    (void) pvParameters;
+
+    aht10_msg_t msg;
+
+    for (;;) {
+
+        msg.temperature = aht10_get_temperature(&sensorAHT10);
+        msg.humidity    = aht10_get_humidity(&sensorAHT10);
+
+        // Erro físico do sensor
+        if (msg.temperature <= -1000.0f || msg.humidity < 0.0f) {
+            xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_AHT10);
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+
+        xQueueOverwrite(q_aht10, &msg);
+
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
 
 // -----------------------------------------------------------------------------
 // ----------- Tarefa de gestão de Inteface LED e Display ----------------------
@@ -611,6 +654,7 @@ void task_ui(void *pvParameters) {
             EVT_SEM_ALCANCE |
             EVT_VISITANTE_DETECT |
             EVT_COMPRA_REALIZADA |
+            EVT_UI_UPDATE |
             EVT_UI_CLEAR,
             pdTRUE,     // limpa bits ao sair
             pdFALSE,    // qualquer bit
@@ -643,6 +687,14 @@ void task_ui(void *pvParameters) {
             led_compra();
             compra_display();
         }
+        else if (events & EVT_UI_UPDATE) {
+            display_info_gerais(
+                system_state.distance_cm,
+                system_state.temperature,
+                system_state.humidity
+            );
+        }
+        
 
         // loop de manutenção
         for (int i = 0; i < 5; i++) {
@@ -664,10 +716,15 @@ void task_main(void *pvParameters) {
     vl53_msg_t msg;
     static bool sem_alcance_ativo = false;
 
+    aht10_msg_t aht_msg;
+
     for (;;) {
 
         // ---------------- VL53L0X ----------------
         if (xQueueReceive(q_distancia, &msg, pdMS_TO_TICKS(20)) == pdPASS) {
+
+            system_state.distance_cm = msg.distance_cm;
+            system_state.dados_validos = true;
 
             if (msg.distance_cm > DIST_MAX_VALIDA) {
                 if (!sem_alcance_ativo) {
@@ -684,23 +741,21 @@ void task_main(void *pvParameters) {
             }
         }
 
-        // ---------------------------------------------------------------------
-        // Leitura dos sensores
-        // ---------------------------------------------------------------------
-        float temperature = aht10_get_temperature(&sensorAHT10);
-        float humidity    = aht10_get_humidity(&sensorAHT10);
-        
-        // ---------------------------------------------------------------------
-        // Tratamento de erro - Sensor AHT10
-        // ---------------------------------------------------------------------
-        if (temperature <= -1000.0f || humidity < 0.0f) {
-            xEventGroupSetBits(system_events, EVT_ERRO_SENSOR_AHT10);
+        // ---------------- AHT10 ---------------------------
+        if (xQueueReceive(q_aht10, &aht_msg, 0) == pdPASS) {
+            system_state.temperature = aht_msg.temperature;
+            system_state.humidity    = aht_msg.humidity;
+            system_state.dados_validos = true;
         }
 
         // ---------------------------------------------------------------------
         // Compra registrada (botão)
         // ---------------------------------------------------------------------
         compra_registrada();
+
+        if (system_state.dados_validos) {
+            xEventGroupSetBits(system_events, EVT_UI_UPDATE);
+        }
 
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -749,12 +804,14 @@ int main(){
     setup_sensorAHT10(&sensorAHT10);
 
     q_distancia = xQueueCreate(1, sizeof(vl53_msg_t));
+    q_aht10 = xQueueCreate(1, sizeof(aht10_msg_t));
 
     // Loop principal
     xTaskCreate(task_main, "MainTask", 2048, NULL, tskIDLE_PRIORITY + 1,NULL);
     xTaskCreate(task_ui, "UITask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_vl53l0x, "VL53", 1024, NULL, tskIDLE_PRIORITY + 2, NULL);
     xTaskCreate(task_buzzer, "Buzzer", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
+    xTaskCreate(task_aht10, "AHT10", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
 
     vTaskStartScheduler();
 
