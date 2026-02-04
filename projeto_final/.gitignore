@@ -1,3 +1,5 @@
 build
 !.vscode/*
 lib/FreeRTOS-Kernel/
+.env
+.env/*

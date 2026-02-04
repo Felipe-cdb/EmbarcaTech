@@ -2,6 +2,10 @@
 #include <string.h>
 #include <ctype.h>
 
+// Wi-Fi Pico W
+#include "pico/cyw43_arch.h"
+#include "lwipopts.h"
+
 // FreeRTOS
 #include "FreeRTOS.h"
 #include "task.h"
@@ -50,6 +54,29 @@ const uint DISPLAY_SCL_PIN = 15;
 #define DIST_MAX_VALIDA 800
 
 // -----------------------------------------------------------------------------
+// ----------- Configuração Wi-Fi -----------------------------------------------
+// -----------------------------------------------------------------------------
+
+#define WIFI_SSID       "SEU_SSID_WIFI"
+#define WIFI_PASSWORD   "SUA_SENHA_WIFI"
+
+// -----------------------------------------------------------------------------
+// ----------- FreeRTOS Static Memory - Uso um FreeRTOS especifico -------------
+// -----------------------------------------------------------------------------
+
+// ====== FreeRTOS Static Memory ======
+void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize) {
+    static StaticTask_t xIdleTaskTCB;
+    static StackType_t uxIdleTaskStack[configMINIMAL_STACK_SIZE];
+    *ppxIdleTaskTCBBuffer = &xIdleTaskTCB; *ppxIdleTaskStackBuffer = uxIdleTaskStack; *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
+}
+void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer, StackType_t **ppxTimerTaskStackBuffer, uint32_t *pulTimerTaskStackSize) {
+    static StaticTask_t xTimerTaskTCB;
+    static StackType_t uxTimerTaskStack[configTIMER_TASK_STACK_DEPTH];
+    *ppxTimerTaskTCBBuffer = &xTimerTaskTCB; *ppxTimerTaskStackBuffer = uxTimerTaskStack; *pulTimerTaskStackSize = configTIMER_TASK_STACK_DEPTH;
+}
+
+// -----------------------------------------------------------------------------
 // ----------- Estruturas de Dados e Handlers ----------------------------------
 // -----------------------------------------------------------------------------
 
@@ -62,6 +89,8 @@ const uint DISPLAY_SCL_PIN = 15;
 #define EVT_COMPRA_REALIZADA   (1 << 5)
 #define EVT_BUZZER_BEEP        (1 << 7)
 #define EVT_UI_UPDATE          (1 << 8)
+#define EVT_WIFI_CONNECTED     (1 << 9)
+#define EVT_WIFI_ERROR         (1 << 10)
 
 typedef struct {
     uint16_t distance_cm;
@@ -112,6 +141,12 @@ typedef enum {
 static led_state_t led_state = LED_IDLE;
 static absolute_time_t led_timeout;
 
+void led_clear_all(){
+    gpio_put(LED_VERDE, 0);
+    gpio_put(LED_AZUL, 0);
+    gpio_put(LED_VERMELHO, 0);
+}
+
 void setup_leds(){
     gpio_init(LED_VERDE);
     gpio_set_dir(LED_VERDE, GPIO_OUT);
@@ -120,12 +155,6 @@ void setup_leds(){
     gpio_init(LED_VERMELHO);
     gpio_set_dir(LED_VERMELHO, GPIO_OUT);
     led_clear_all();
-}
-
-void led_clear_all(){
-    gpio_put(LED_VERDE, 0);
-    gpio_put(LED_AZUL, 0);
-    gpio_put(LED_VERMELHO, 0);
 }
 
 void led_update(){
@@ -142,6 +171,21 @@ void led_erro_geral(){
     gpio_put(LED_VERMELHO, 1);
     led_state = LED_ERRO_ATIVO;
     led_timeout = make_timeout_time_ms(500);
+}
+
+static inline void led_branco() {
+    gpio_put(LED_VERDE, 1);
+    gpio_put(LED_AZUL, 1);
+    gpio_put(LED_VERMELHO, 1);
+}
+
+void led_wifi_pisca_branco() {
+    for (int i = 0; i < 3; i++) {
+        led_branco();
+        vTaskDelay(pdMS_TO_TICKS(80));
+        led_clear_all();
+        vTaskDelay(pdMS_TO_TICKS(80));
+    }
 }
 
 void led_erro_sensorDistancia(){
@@ -485,6 +529,7 @@ void task_buzzer(void *pvParameters) {
     }
 }
 
+// Tarefa VL53L0X - Responsável por ler o sensor de distância
 void task_vl53l0x(void *pvParameters) {
     vl53_msg_t msg;
 
@@ -505,7 +550,7 @@ void task_vl53l0x(void *pvParameters) {
     }
 }
 
-
+// Tarefa AHT10 - Responsável por ler o sensor de temperatura e umidade
 void task_aht10(void *pvParameters) {
     aht10_msg_t msg;
     for (;;) {
@@ -521,6 +566,7 @@ void task_aht10(void *pvParameters) {
     }
 }
 
+// Tarefa UI - Responsável por atualizar o display e LEDs conforme eventos
 void task_ui(void *pvParameters) {
     EventBits_t events;
     for (;;) {
@@ -582,6 +628,67 @@ void task_ui(void *pvParameters) {
     }
 }
 
+// -----------------------------------------------------------------------------
+// ----------- Tarefa Wi-Fi -----------------------------------------------------
+// -----------------------------------------------------------------------------
+
+void task_wifi(void *pvParameters) {
+    (void) pvParameters;
+
+    // Inicializa stack Wi-Fi + lwIP (modo FreeRTOS)
+    if (cyw43_arch_init()) {
+        printf("Wi-Fi: falha ao inicializar cyw43\n");
+        xEventGroupSetBits(system_events, EVT_WIFI_ERROR);
+        vTaskDelete(NULL);
+    }
+
+    cyw43_arch_enable_sta_mode();
+    printf("Wi-Fi: conectando...\n");
+
+    int result = cyw43_arch_wifi_connect_timeout_ms(
+        WIFI_SSID,
+        WIFI_PASSWORD,
+        CYW43_AUTH_WPA2_AES_PSK,
+        30000
+    );
+
+    if (result != 0) {
+        printf("Wi-Fi: falha ao conectar (%d)\n", result);
+        xEventGroupSetBits(system_events, EVT_WIFI_ERROR);
+        vTaskDelete(NULL);
+    }
+
+    printf("Wi-Fi: conectado com sucesso!\n");
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+    xEventGroupSetBits(system_events, EVT_WIFI_CONNECTED);
+
+    // A task pode ficar viva apenas para manter o driver ativo
+    for (;;) {
+        int status = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
+
+        if (status == CYW43_LINK_UP) {
+            xEventGroupSetBits(system_events, EVT_WIFI_CONNECTED);
+            xEventGroupClearBits(system_events, EVT_WIFI_ERROR);
+
+            // Pisca branco a cada 10 segundos
+            led_wifi_pisca_branco();
+            vTaskDelay(pdMS_TO_TICKS(10000));
+        } 
+        else {
+            xEventGroupClearBits(system_events, EVT_WIFI_CONNECTED);
+            xEventGroupSetBits(system_events, EVT_WIFI_ERROR);
+
+            // Indica erro geral
+            led_erro_geral();
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+
+}
+
+// -----------------------------------------------------------------------------
+// --- Tarefa Principal - Responsável por coordenar leituras e atualizações-----
+// -----------------------------------------------------------------------------
 void task_main(void *pvParameters) {
     vl53_msg_t msg;
     static bool sem_alcance_ativo = false;
@@ -661,12 +768,13 @@ int main(){
     q_aht10 = xQueueCreate(1, sizeof(aht10_msg_t));
 
     // Criação de Tasks
-    xTaskCreate(task_main, "MainTask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
-    xTaskCreate(task_ui, "UITask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_vl53l0x, "VL53", 1024, NULL, tskIDLE_PRIORITY + 2, NULL);
-    xTaskCreate(task_buzzer, "Buzzer", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_aht10, "AHT10", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
-
+    xTaskCreate(task_buzzer, "Buzzer", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
+    xTaskCreate(task_ui, "UITask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
+    xTaskCreate(task_wifi, "WiFi", 2048, NULL, tskIDLE_PRIORITY + 2, NULL);
+    xTaskCreate(task_main, "MainTask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
+    
     vTaskStartScheduler();
     while (true) {}
 }
