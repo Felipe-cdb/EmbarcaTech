@@ -637,13 +637,13 @@ void task_wifi(void *pvParameters) {
 
     // Inicializa stack Wi-Fi + lwIP (modo FreeRTOS)
     if (cyw43_arch_init()) {
-        printf("Wi-Fi: falha ao inicializar cyw43\n");
         xEventGroupSetBits(system_events, EVT_WIFI_ERROR);
+        // Indica erro geral
+        led_erro_geral();
         vTaskDelete(NULL);
     }
 
     cyw43_arch_enable_sta_mode();
-    printf("Wi-Fi: conectando...\n");
 
     int result = cyw43_arch_wifi_connect_timeout_ms(
         WIFI_SSID,
@@ -653,12 +653,12 @@ void task_wifi(void *pvParameters) {
     );
 
     if (result != 0) {
-        printf("Wi-Fi: falha ao conectar (%d)\n", result);
         xEventGroupSetBits(system_events, EVT_WIFI_ERROR);
+        // Indica erro geral
+        led_erro_geral();
         vTaskDelete(NULL);
     }
 
-    printf("Wi-Fi: conectado com sucesso!\n");
     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
     xEventGroupSetBits(system_events, EVT_WIFI_CONNECTED);
 
@@ -692,9 +692,25 @@ void task_wifi(void *pvParameters) {
 void task_main(void *pvParameters) {
     vl53_msg_t msg;
     static bool sem_alcance_ativo = false;
-
     aht10_msg_t aht_msg;
 
+    // -------------------------------------------------
+    // Aguarda Wi-Fi conectar antes de iniciar o sistema
+    // -------------------------------------------------
+    xEventGroupWaitBits(
+        system_events,
+        EVT_WIFI_CONNECTED,
+        pdFALSE,   // NÃO limpa o bit
+        pdTRUE,    // espera exatamente esse bit
+        portMAX_DELAY
+    );
+
+    // Opcional: feedback visual inicial
+    led_wifi_pisca_branco();
+
+    // -------------------------------------------------
+    // Loop principal do sistema
+    // -------------------------------------------------
     for (;;) {
 
         // ---------------- VL53L0X ----------------
@@ -715,17 +731,17 @@ void task_main(void *pvParameters) {
             }
         }
 
-        // ---------------- AHT10 ---------------------------
+        // ---------------- AHT10 ----------------
         if (xQueueReceive(q_aht10, &aht_msg, 0) == pdPASS) {
             system_state.temperature = aht_msg.temperature;
             system_state.humidity    = aht_msg.humidity;
             system_state.dados_validos = true;
         }
 
-        // Compra registrada (botão)
+        // ---------------- Botão ----------------
         compra_registrada();
 
-        // SÓ envia atualização comum se NÃO estiver fora de alcance
+        // ---------------- UI ----------------
         if (system_state.dados_validos && !sem_alcance_ativo) {
             xEventGroupSetBits(system_events, EVT_UI_UPDATE);
         }
@@ -733,6 +749,7 @@ void task_main(void *pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
+
 
 // -----------------------------------------------------------------------------
 // ----------- Main -------------------------------------------------------------
