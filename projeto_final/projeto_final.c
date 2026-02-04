@@ -490,19 +490,49 @@ bool setup_sensorAHT10(AHT10* sensorAHT10){
     return true;
 }
 
-void setup_botao_compra(){
+void botao_compra_interrupcao(uint gpio, uint32_t events) {
+
+    static absolute_time_t last_irq_time;
+
+    // Garante que é o pino correto e borda correta
+    if (gpio != BOTAO_COMPRA_PIN || !(events & GPIO_IRQ_EDGE_FALL)) {
+        return;
+    }
+
+    // ---------------- DEBOUNCE ----------------
+    absolute_time_t now = get_absolute_time();
+
+    // 200 ms de debounce
+    if (absolute_time_diff_us(last_irq_time, now) < 200000) {
+        return;
+    }
+
+    last_irq_time = now;
+    // ------------------------------------------
+
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    xEventGroupSetBitsFromISR(
+        system_events,
+        EVT_COMPRA_REALIZADA,
+        &xHigherPriorityTaskWoken
+    );
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+
+void setup_botao_compra() {
     gpio_init(BOTAO_COMPRA_PIN);
     gpio_set_dir(BOTAO_COMPRA_PIN, GPIO_IN);
     gpio_pull_up(BOTAO_COMPRA_PIN);
-}
 
-void compra_registrada() {
-    static bool last_state = true;
-    bool current = gpio_get(BOTAO_COMPRA_PIN);
-    if (last_state && !current) {
-        xEventGroupSetBits(system_events, EVT_COMPRA_REALIZADA);
-    }
-    last_state = current;
+    // Habilita interrupção por borda de descida
+    gpio_set_irq_enabled_with_callback(
+        BOTAO_COMPRA_PIN,
+        GPIO_IRQ_EDGE_FALL,
+        true,
+        &botao_compra_interrupcao
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -737,9 +767,6 @@ void task_main(void *pvParameters) {
             system_state.humidity    = aht_msg.humidity;
             system_state.dados_validos = true;
         }
-
-        // ---------------- Botão ----------------
-        compra_registrada();
 
         // ---------------- UI ----------------
         if (system_state.dados_validos && !sem_alcance_ativo) {
