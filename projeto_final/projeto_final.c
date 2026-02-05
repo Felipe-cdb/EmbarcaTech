@@ -530,7 +530,15 @@ void botao_compra_interrupcao(uint gpio, uint32_t events) {
 
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-    // ⚠️ Apenas sinaliza sistema/UI
+    // 1️⃣ Envia COMPRA imediatamente para HTTP
+    http_msg_t http_msg = {
+        .type = HTTP_EVT_COMPRA,
+        .value_u32 = 1
+    };
+
+    xQueueSendFromISR(q_http, &http_msg, &xHigherPriorityTaskWoken);
+
+    // 2️⃣ Apenas para UI (LED / display)
     xEventGroupSetBitsFromISR(
         system_events,
         EVT_COMPRA_REALIZADA,
@@ -777,7 +785,6 @@ void task_main(void *pvParameters) {
     static bool sem_alcance_ativo = false;
     static uint8_t visitante_raw_count = 0;
     static bool visitante_presente = false;
-    static bool compra_pendente = false;
     static absolute_time_t last_temp_send;
 
 
@@ -802,19 +809,6 @@ void task_main(void *pvParameters) {
     // Loop principal do sistema
     // -------------------------------------------------
     for (;;) {
-
-        // ---------------- COMPRA ----------------
-        EventBits_t ev = xEventGroupGetBits(system_events);
-
-        if (ev & EVT_COMPRA_REALIZADA) {
-
-            // Limpa o evento (consumido pelo sistema)
-            xEventGroupClearBits(system_events, EVT_COMPRA_REALIZADA);
-
-            // Marca compra pendente
-            compra_pendente = true;
-        }
-
         // ---------------- VL53L0X ----------------
         if (xQueueReceive(q_distancia, &msg, pdMS_TO_TICKS(20)) == pdPASS) {
 
@@ -864,18 +858,6 @@ void task_main(void *pvParameters) {
                 };
                 xQueueSend(q_http, &http_msg, pdMS_TO_TICKS(50));
                 last_temp_send = make_timeout_time_ms(TEMPO_ENVIO_TEMPERATURA_MS);
-            }
-        }
-
-        if (compra_pendente) {
-
-            http_msg_t http_msg = {
-                .type = HTTP_EVT_COMPRA,
-                .value_u32 = 1
-            };
-
-            if (xQueueSend(q_http, &http_msg, pdMS_TO_TICKS(50)) == pdPASS) {
-                compra_pendente = false;  // 👈 só limpa após enviar
             }
         }
 
