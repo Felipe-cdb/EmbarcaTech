@@ -5,6 +5,8 @@
 // Wi-Fi Pico W
 #include "pico/cyw43_arch.h"
 #include "lwipopts.h"
+#include "lwip/api.h"
+#include "lwip/netdb.h"
 
 // FreeRTOS
 #include "FreeRTOS.h"
@@ -57,14 +59,16 @@ const uint DISPLAY_SCL_PIN = 15;
 // intervalo de envio de temperatura via HTTP (1 minutos)
 #define TEMPO_ENVIO_TEMPERATURA_MS (1 * 60 * 1000)
 
-
-
 // -----------------------------------------------------------------------------
 // ----------- Configuração Wi-Fi -----------------------------------------------
 // -----------------------------------------------------------------------------
 
-#define WIFI_SSID       "brisa-4338675"
-#define WIFI_PASSWORD   "abqkbrvg"
+#define WIFI_SSID       "SEU_SSID_WIFI"
+#define WIFI_PASSWORD   "SUA_SENHA_WIFI"
+// Servidor HTTP Flask
+#define SERVER_IP   "192.168.0.3"
+#define SERVER_PORT 5000
+
 
 // -----------------------------------------------------------------------------
 // ----------- FreeRTOS Static Memory - Uso um FreeRTOS especifico -------------
@@ -746,35 +750,91 @@ void task_wifi(void *pvParameters) {
 // -----------------------------------------------------------------------------
 // ----------- Tarefa Envio HTTP -----------------------------------------------
 // -----------------------------------------------------------------------------
+static void http_post(const char *path, const char *json_body) {
+    struct netconn *conn;
+    struct netbuf *buf;
+    ip_addr_t server_ip;
+    char request[512];
+
+    ipaddr_aton(SERVER_IP, &server_ip);
+
+    conn = netconn_new(NETCONN_TCP);
+    if (!conn) {
+        printf("[HTTP] Falha ao criar netconn\n");
+        return;
+    }
+
+    if (netconn_connect(conn, &server_ip, SERVER_PORT) != ERR_OK) {
+        printf("[HTTP] Falha ao conectar\n");
+        netconn_delete(conn);
+        return;
+    }
+
+    snprintf(request, sizeof(request),
+        "POST %s HTTP/1.1\r\n"
+        "Host: %s:%d\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: %d\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "%s",
+        path,
+        SERVER_IP,
+        SERVER_PORT,
+        strlen(json_body),
+        json_body
+    );
+
+    netconn_write(conn, request, strlen(request), NETCONN_COPY);
+
+    // Descarta resposta (não precisamos dela agora)
+    while (netconn_recv(conn, &buf) == ERR_OK) {
+        netbuf_delete(buf);
+    }
+
+    netconn_close(conn);
+    netconn_delete(conn);
+
+    printf("[HTTP] POST %s enviado\n", path);
+}
+
 void task_http(void *pvParameters) {
     http_msg_t msg;
 
     for (;;) {
-
         if (xQueueReceive(q_http, &msg, portMAX_DELAY) == pdPASS) {
 
             switch (msg.type) {
 
                 case HTTP_EVT_VISITA:
-                    printf("[HTTP] Enviar VISITA: %lu\n", msg.value_u32);
+                    http_post(
+                        "/api/visit",
+                        "{\"visit\":\"ok\"}"
+                    );
                     break;
 
                 case HTTP_EVT_COMPRA:
-                    printf("[HTTP] Enviar COMPRA\n");
+                    http_post(
+                        "/api/compra",
+                        "{\"compra\":\"ok\"}"
+                    );
                     break;
 
-                case HTTP_EVT_TEMPERATURA:
-                    printf("[HTTP] Enviar TEMP: %.2f C | HUM: %.2f %%\n",
-                           msg.temperature, msg.humidity);
+                case HTTP_EVT_TEMPERATURA: {
+                    char json[128];
+                    snprintf(
+                        json, sizeof(json),
+                        "{\"temperature\":%.2f,\"humidity\":%.2f}",
+                        msg.temperature,
+                        msg.humidity
+                    );
+                    http_post("/api/temp", json);
                     break;
+                }
             }
-
-            // 🚧 AQUI entra futuramente:
-            // http_post("/api/...", json_payload);
         }
     }
 }
-
 
 // -----------------------------------------------------------------------------
 // --- Tarefa Principal - Responsável por coordenar leituras e atualizações-----
