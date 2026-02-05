@@ -50,15 +50,21 @@ const uint DISPLAY_SCL_PIN = 15;
 // Botão de Compra
 #define BOTAO_COMPRA_PIN 5
 
-// Parâmetros Lógicos
+// distância máxima que o sensor vl53l0x considera válida (em cm)
 #define DIST_MAX_VALIDA 800
+// distância para detectar visitante (em cm) - considere tamanho do portal e coloque um valor uns 20 cm menor
+#define DIST_VISITANTE_CM 50 
+// intervalo de envio de temperatura via HTTP (2 minutos)
+#define TEMPO_ENVIO_TEMPERATURA_MS (2 * 60 * 1000)
+
+
 
 // -----------------------------------------------------------------------------
 // ----------- Configuração Wi-Fi -----------------------------------------------
 // -----------------------------------------------------------------------------
 
-#define WIFI_SSID       "SEU_SSID_WIFI"
-#define WIFI_PASSWORD   "SUA_SENHA_WIFI"
+#define WIFI_SSID       "brisa-4338675"
+#define WIFI_PASSWORD   "abqkbrvg"
 
 // -----------------------------------------------------------------------------
 // ----------- FreeRTOS Static Memory - Uso um FreeRTOS especifico -------------
@@ -92,6 +98,7 @@ void vApplicationGetTimerTaskMemory(StaticTask_t **ppxTimerTaskTCBBuffer, StackT
 #define EVT_WIFI_CONNECTED     (1 << 9)
 #define EVT_WIFI_ERROR         (1 << 10)
 
+// estrutura do estado do sistema
 typedef struct {
     uint16_t distance_cm;
     float temperature;
@@ -99,6 +106,7 @@ typedef struct {
     bool dados_validos;
 } system_state_t;
 
+// Mensagens das filas VL53L0X e AHT10
 typedef struct {
     uint16_t distance_cm;
 } vl53_msg_t;
@@ -108,12 +116,28 @@ typedef struct {
     float humidity;
 } aht10_msg_t;
 
+// Estruturas de mensagens HTTP
+typedef enum {
+    HTTP_EVT_VISITA,
+    HTTP_EVT_COMPRA,
+    HTTP_EVT_TEMPERATURA
+} http_event_type_t;
+
+typedef struct {
+    http_event_type_t type;
+    uint32_t value_u32;   // visitas ou compras
+    float temperature;
+    float humidity;
+} http_msg_t;
+
 // Globais de Controle
 QueueHandle_t q_distancia;
 QueueHandle_t q_aht10;
+QueueHandle_t q_http;
 EventGroupHandle_t system_events;
 
 static system_state_t system_state = { .dados_validos = false };
+
 
 // -----------------------------------------------------------------------------
 // ----------- Controle do Display OLED SSD1306 --------------------------------
@@ -494,24 +518,19 @@ void botao_compra_interrupcao(uint gpio, uint32_t events) {
 
     static absolute_time_t last_irq_time;
 
-    // Garante que é o pino correto e borda correta
     if (gpio != BOTAO_COMPRA_PIN || !(events & GPIO_IRQ_EDGE_FALL)) {
         return;
     }
 
-    // ---------------- DEBOUNCE ----------------
     absolute_time_t now = get_absolute_time();
-
-    // 200 ms de debounce
     if (absolute_time_diff_us(last_irq_time, now) < 200000) {
         return;
     }
-
     last_irq_time = now;
-    // ------------------------------------------
 
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
+    // ⚠️ Apenas sinaliza sistema/UI
     xEventGroupSetBitsFromISR(
         system_events,
         EVT_COMPRA_REALIZADA,
@@ -520,6 +539,7 @@ void botao_compra_interrupcao(uint gpio, uint32_t events) {
 
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
+
 
 void setup_botao_compra() {
     gpio_init(BOTAO_COMPRA_PIN);
@@ -562,7 +582,7 @@ void task_buzzer(void *pvParameters) {
 // Tarefa VL53L0X - Responsável por ler o sensor de distância
 void task_vl53l0x(void *pvParameters) {
     vl53_msg_t msg;
-
+    
     for (;;) {
         msg.distance_cm = vl53l0x_read_single_cm(&sensorDistancia);
 
@@ -572,7 +592,6 @@ void task_vl53l0x(void *pvParameters) {
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
-
         // Envia sempre o último valor (overwrite evita backlog)
         xQueueOverwrite(q_distancia, &msg);
 
@@ -659,7 +678,7 @@ void task_ui(void *pvParameters) {
 }
 
 // -----------------------------------------------------------------------------
-// ----------- Tarefa Wi-Fi -----------------------------------------------------
+// ----------- Tarefa Wi-Fi ----------------------------------------------------
 // -----------------------------------------------------------------------------
 
 void task_wifi(void *pvParameters) {
@@ -717,12 +736,50 @@ void task_wifi(void *pvParameters) {
 }
 
 // -----------------------------------------------------------------------------
+// ----------- Tarefa Envio HTTP -----------------------------------------------
+// -----------------------------------------------------------------------------
+void task_http(void *pvParameters) {
+    http_msg_t msg;
+
+    for (;;) {
+
+        if (xQueueReceive(q_http, &msg, portMAX_DELAY) == pdPASS) {
+
+            switch (msg.type) {
+
+                case HTTP_EVT_VISITA:
+                    printf("[HTTP] Enviar VISITA: %lu\n", msg.value_u32);
+                    break;
+
+                case HTTP_EVT_COMPRA:
+                    printf("[HTTP] Enviar COMPRA\n");
+                    break;
+
+                case HTTP_EVT_TEMPERATURA:
+                    printf("[HTTP] Enviar TEMP: %.2f C | HUM: %.2f %%\n",
+                           msg.temperature, msg.humidity);
+                    break;
+            }
+
+            // 🚧 AQUI entra futuramente:
+            // http_post("/api/...", json_payload);
+        }
+    }
+}
+
+
+// -----------------------------------------------------------------------------
 // --- Tarefa Principal - Responsável por coordenar leituras e atualizações-----
 // -----------------------------------------------------------------------------
 void task_main(void *pvParameters) {
     vl53_msg_t msg;
-    static bool sem_alcance_ativo = false;
     aht10_msg_t aht_msg;
+    static bool sem_alcance_ativo = false;
+    static uint8_t visitante_raw_count = 0;
+    static bool visitante_presente = false;
+    static bool compra_pendente = false;
+    static absolute_time_t last_temp_send;
+
 
     // -------------------------------------------------
     // Aguarda Wi-Fi conectar antes de iniciar o sistema
@@ -738,10 +795,25 @@ void task_main(void *pvParameters) {
     // Opcional: feedback visual inicial
     led_wifi_pisca_branco();
 
+    // Inicializa o timer de envio de temperatura
+    last_temp_send = make_timeout_time_ms(TEMPO_ENVIO_TEMPERATURA_MS);
+
     // -------------------------------------------------
     // Loop principal do sistema
     // -------------------------------------------------
     for (;;) {
+
+        // ---------------- COMPRA ----------------
+        EventBits_t ev = xEventGroupGetBits(system_events);
+
+        if (ev & EVT_COMPRA_REALIZADA) {
+
+            // Limpa o evento (consumido pelo sistema)
+            xEventGroupClearBits(system_events, EVT_COMPRA_REALIZADA);
+
+            // Marca compra pendente
+            compra_pendente = true;
+        }
 
         // ---------------- VL53L0X ----------------
         if (xQueueReceive(q_distancia, &msg, pdMS_TO_TICKS(20)) == pdPASS) {
@@ -754,9 +826,25 @@ void task_main(void *pvParameters) {
                 sem_alcance_ativo = true;
             } else {
                 sem_alcance_ativo = false;
-                if (msg.distance_cm <= 50) {
-                    xEventGroupSetBits(system_events, EVT_VISITANTE_DETECT);
-                    xEventGroupSetBits(system_events, EVT_BUZZER_BEEP);
+                if (msg.distance_cm <= DIST_VISITANTE_CM) {
+                    if (!visitante_presente) {
+                        visitante_presente = true;
+                        visitante_raw_count++;
+
+                        if (visitante_raw_count >= 2) {
+                            http_msg_t http_msg = {
+                                .type = HTTP_EVT_VISITA,
+                                .value_u32 = 1   // sempre envia 1 visita real
+                            };
+                            // Enviar mensagem HTTP
+                            xQueueSend(q_http, &http_msg, pdMS_TO_TICKS(50));
+                            visitante_raw_count = 0; // zera contador
+                        }
+                        xEventGroupSetBits(system_events, EVT_VISITANTE_DETECT);
+                        xEventGroupSetBits(system_events, EVT_BUZZER_BEEP);
+                    }
+                } else {
+                    visitante_presente = false;
                 }
             }
         }
@@ -766,6 +854,29 @@ void task_main(void *pvParameters) {
             system_state.temperature = aht_msg.temperature;
             system_state.humidity    = aht_msg.humidity;
             system_state.dados_validos = true;
+
+            // Envia temperatura via HTTP a cada intervalo definido
+            if (absolute_time_diff_us(get_absolute_time(), last_temp_send) <= 0) {
+                http_msg_t http_msg = {
+                    .type = HTTP_EVT_TEMPERATURA,
+                    .temperature = system_state.temperature,
+                    .humidity = system_state.humidity
+                };
+                xQueueSend(q_http, &http_msg, pdMS_TO_TICKS(50));
+                last_temp_send = make_timeout_time_ms(TEMPO_ENVIO_TEMPERATURA_MS);
+            }
+        }
+
+        if (compra_pendente) {
+
+            http_msg_t http_msg = {
+                .type = HTTP_EVT_COMPRA,
+                .value_u32 = 1
+            };
+
+            if (xQueueSend(q_http, &http_msg, pdMS_TO_TICKS(50)) == pdPASS) {
+                compra_pendente = false;  // 👈 só limpa após enviar
+            }
         }
 
         // ---------------- UI ----------------
@@ -807,9 +918,10 @@ int main(){
     setup_sensorDistancia(&sensorDistancia);
     setup_sensorAHT10(&sensorAHT10);
 
-    // Recursos de IPC
+    // Recursos para filas
     q_distancia = xQueueCreate(1, sizeof(vl53_msg_t));
     q_aht10 = xQueueCreate(1, sizeof(aht10_msg_t));
+    q_http = xQueueCreate(5, sizeof(http_msg_t));
 
     // Criação de Tasks
     xTaskCreate(task_vl53l0x, "VL53", 1024, NULL, tskIDLE_PRIORITY + 2, NULL);
@@ -817,6 +929,7 @@ int main(){
     xTaskCreate(task_buzzer, "Buzzer", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_ui, "UITask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_wifi, "WiFi", 2048, NULL, tskIDLE_PRIORITY + 2, NULL);
+    xTaskCreate(task_http, "HTTP", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_main, "MainTask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
     
     vTaskStartScheduler();
