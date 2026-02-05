@@ -54,8 +54,8 @@ const uint DISPLAY_SCL_PIN = 15;
 #define DIST_MAX_VALIDA 800
 // distância para detectar visitante (em cm) - considere tamanho do portal e coloque um valor uns 20 cm menor
 #define DIST_VISITANTE_CM 50 
-// intervalo de envio de temperatura via HTTP (2 minutos)
-#define TEMPO_ENVIO_TEMPERATURA_MS (2 * 60 * 1000)
+// intervalo de envio de temperatura via HTTP (1 minutos)
+#define TEMPO_ENVIO_TEMPERATURA_MS (1 * 60 * 1000)
 
 
 
@@ -849,16 +849,18 @@ void task_main(void *pvParameters) {
             system_state.humidity    = aht_msg.humidity;
             system_state.dados_validos = true;
 
-            // Envia temperatura via HTTP a cada intervalo definido
-            if (absolute_time_diff_us(get_absolute_time(), last_temp_send) <= 0) {
-                http_msg_t http_msg = {
-                    .type = HTTP_EVT_TEMPERATURA,
-                    .temperature = system_state.temperature,
-                    .humidity = system_state.humidity
-                };
-                xQueueSend(q_http, &http_msg, pdMS_TO_TICKS(50));
-                last_temp_send = make_timeout_time_ms(TEMPO_ENVIO_TEMPERATURA_MS);
-            }
+        }
+        
+        // ---------------- ENVIO PERIÓDICO DE TEMPERATURA ----------------
+        if (absolute_time_diff_us(get_absolute_time(), last_temp_send) <= 0) {
+            http_msg_t http_msg = {
+                .type = HTTP_EVT_TEMPERATURA,
+                .temperature = system_state.temperature,
+                .humidity = system_state.humidity
+            };
+            xQueueSend(q_http, &http_msg, pdMS_TO_TICKS(50));
+            // Reinicia timer
+            last_temp_send = make_timeout_time_ms(TEMPO_ENVIO_TEMPERATURA_MS);
         }
 
         // ---------------- UI ----------------
