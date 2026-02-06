@@ -801,6 +801,8 @@ static void http_post(const char *path, const char *json_body) {
 void task_http(void *pvParameters) {
     http_msg_t msg;
 
+    printf("[HTTP] Tarefa HTTP iniciada\n");
+
     for (;;) {
         if (xQueueReceive(q_http, &msg, portMAX_DELAY) == pdPASS) {
 
@@ -973,7 +975,7 @@ int main(){
     xTaskCreate(task_buzzer, "Buzzer", 1024, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_ui, "UITask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
     xTaskCreate(task_wifi, "WiFi", 2048, NULL, tskIDLE_PRIORITY + 2, NULL);
-    xTaskCreate(task_http, "HTTP", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
+    xTaskCreate(task_http, "HTTP", 2048, NULL, tskIDLE_PRIORITY + 3, NULL);
     xTaskCreate(task_main, "MainTask", 2048, NULL, tskIDLE_PRIORITY + 1, NULL);
     
     vTaskStartScheduler();
