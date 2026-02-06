@@ -815,8 +815,8 @@ void task_http(void *pvParameters) {
 
                 case HTTP_EVT_COMPRA:
                     http_post(
-                        "/api/compra",
-                        "{\"compra\":\"ok\"}"
+                        "/api/sale",
+                        "{\"sale\":\"ok\"}"
                     );
                     break;
 
