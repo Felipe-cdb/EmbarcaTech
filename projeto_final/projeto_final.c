@@ -55,7 +55,7 @@ const uint DISPLAY_SCL_PIN = 15;
 // distância máxima que o sensor vl53l0x considera válida (em cm)
 #define DIST_MAX_VALIDA 800
 // distância para detectar visitante (em cm) - considere tamanho do portal e coloque um valor uns 20 cm menor
-#define DIST_VISITANTE_CM 50 
+#define DIST_VISITANTE_CM 130 
 // intervalo de envio de temperatura via HTTP (1 minutos)
 #define TEMPO_ENVIO_TEMPERATURA_MS (1 * 60 * 1000)
 
@@ -65,9 +65,11 @@ const uint DISPLAY_SCL_PIN = 15;
 
 #define WIFI_SSID       "SEU_SSID_WIFI"
 #define WIFI_PASSWORD   "SUA_SENHA_WIFI"
+
 // Servidor HTTP Flask
 #define SERVER_IP   "192.168.0.3"
 #define SERVER_PORT 5000
+
 
 
 // -----------------------------------------------------------------------------
@@ -420,29 +422,6 @@ void display_sem_alcance_sensorDistancia(){
     render_on_display(ssd, &frame_area);
 }
 
-void display_disparo_sensorDistancia(){
-    memset(ssd, 0, ssd1306_buffer_length);
-
-    char *text[] = {
-        "               ",
-        "               ",
-        "               ",
-        "  Visitante    ",
-        "  Detectado!   ",
-        "               ",
-        "               ",
-        "               ",
-    };
-
-    int y = 0;
-    for (uint i = 0; i < count_of(text); i++) {
-        ssd1306_draw_string(ssd, 5, y, text[i]);
-        y += 8;
-    }
-
-    render_on_display(ssd, &frame_area);
-}
-
 void display_erro_sensorAHT10(){
     memset(ssd, 0, ssd1306_buffer_length);
 
@@ -665,7 +644,6 @@ void task_ui(void *pvParameters) {
         }
         else if (events & EVT_VISITANTE_DETECT) {
             led_disparo_sensorDistancia();
-            display_disparo_sensorDistancia();
         }
         else if (events & EVT_COMPRA_REALIZADA) {
             led_compra();
